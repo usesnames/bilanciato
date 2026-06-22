@@ -1,0 +1,20 @@
+# Environment
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.egg-info/
+.pytest_cache/
+
+# Generated artifacts (reproducible from uploads/ via `python -m src.etl.ingest`)
+database/*.duckdb
+extracted/
+normalized/
+# ...except the prebuilt DB, which the deployed dashboard reads at runtime.
+!database/bilanciato.duckdb
+
+# Generated static site (rebuild with `python -m src.publish.build`)
+site/
+
+# Source PDFs are large; keep them out of git unless intentionally committed
+uploads/*.pdf

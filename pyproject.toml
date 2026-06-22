@@ -1,0 +1,45 @@
+[project]
+name = "bilanciato"
+version = "0.1.0"
+description = "Extract, structure and query the Comune di Torino consolidated financial statements"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas>=2",
+    "duckdb>=1",
+    "pdfplumber",
+    "pyarrow",
+    "streamlit",
+    "plotly",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "ruff",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

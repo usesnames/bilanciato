@@ -1,0 +1,9 @@
+# Runtime dependencies for the deployed Streamlit dashboard (Streamlit Cloud).
+# The dashboard is read-only over the committed DuckDB file, so the PDF-ingest
+# stack (pdfplumber & co., declared in pyproject.toml) is intentionally omitted
+# here to keep the cloud build lean. For local ingest use: pip install -e .
+streamlit
+pandas>=2
+plotly
+duckdb>=1
+pyarrow
