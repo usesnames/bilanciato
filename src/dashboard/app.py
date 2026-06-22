@@ -24,6 +24,7 @@ import streamlit as st
 
 from src.dashboard import glossary
 from src.database.queries import Repository
+from src.normalization.debito import DEBITO_MEASURES
 
 st.set_page_config(page_title="bilanciaTo", page_icon="📊", layout="wide")
 
@@ -160,11 +161,6 @@ def entities_with_metric(metric_name: str):
 
 
 @st.cache_data(ttl=300)
-def search(q: str, limit: int = 50):
-    return get_repo().search(q, limit=limit)
-
-
-@st.cache_data(ttl=300)
 def rendiconto_years():
     return get_repo().rendiconto_years()
 
@@ -177,6 +173,16 @@ def rendiconto(*, kind: str, measure: str, year: int | None = None, level: str =
 @st.cache_data(ttl=300)
 def rendiconto_total(*, kind: str, measure: str, year: int):
     return get_repo().rendiconto_total(kind=kind, measure=measure, year=year)
+
+
+@st.cache_data(ttl=300)
+def debito(measure: str | None = None):
+    return get_repo().debito(measure=measure)
+
+
+@st.cache_data(ttl=300)
+def debito_years():
+    return get_repo().debito_years()
 
 
 # Human labels for rendiconto measures.
@@ -738,28 +744,170 @@ def page_rendiconto():
             file_name=f"rendiconto_{kind}_{measure}.csv", mime="text/csv")
 
 
-def page_search():
-    st.header("Ricerca")
-    q = st.text_input("Cerca tra voci di bilancio, partecipate, note integrative",
-                      placeholder="es. debiti, SMAT, fondo rischi")
-    if not q or len(q) < 2:
+def _fmt_plain(v, dec: int = 0) -> str:
+    """Italian-formatted number, NOT subject to the millions toggle (for
+    per-capita euro and resident counts, which are small absolute figures)."""
+    if v is None:
+        return "-"
+    body = f"{float(v):,.{dec}f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    return body
+
+
+def page_debito():
+    st.header("Debito del Comune")
+    if not debito_years():
+        st.info("Nessun dato sul debito caricato. Esegui `python -m src.etl.load_debito`.")
         return
-    res = search(q, limit=50)
-    st.subheader(f"Voci di bilancio ({len(res['metrics'])})")
-    if res["metrics"]:
-        df = pd.DataFrame(res["metrics"])
-        df["valore"] = df["value"].map(fmt_eur)
-        st.dataframe(df[["year", "category", "metric_name", "valore", "source_document", "source_page"]],
-                     use_container_width=True, hide_index=True)
-    st.subheader(f"Partecipate ({len(res['entities'])})")
-    if res["entities"]:
-        st.dataframe(pd.DataFrame(res["entities"]), use_container_width=True, hide_index=True)
-    st.subheader(f"Note integrative ({len(res['notes'])})")
-    if res["notes"]:
-        df = pd.DataFrame(res["notes"])
-        df["valore"] = df["value"].map(fmt_eur)
-        st.dataframe(df[["year", "heading", "kind", "voce", "period", "valore", "source_page"]],
-                     use_container_width=True, hide_index=True)
+    st.info(
+        "**Debito del Comune di Torino** — è il debito finanziario dell'ente "
+        "(mutui e prestiti). È una cosa diversa sia dal **bilancio consolidato** "
+        "(che fotografa attività e passività dell'intero Gruppo, partecipate "
+        "comprese) sia dal **rendiconto della gestione** (entrate e spese dell'anno): "
+        "qui si guarda solo a quanto il Comune deve restituire e a quanto gli costa "
+        "in interessi."
+    )
+    st.caption(
+        "Dati 2018-2025 trascritti dalle tabelle delle **Relazioni del Collegio dei "
+        "revisori dei conti** del Comune di Torino (evoluzione dell'indebitamento e "
+        "oneri finanziari). Ogni riga riporta la relazione di origine."
+    )
+
+    rows = debito()
+    by: dict[int, dict[str, float]] = {}
+    src_by_year: dict[int, str] = {}
+    for r in rows:
+        by.setdefault(int(r["year"]), {})[r["measure"]] = r["value"]
+        src_by_year[int(r["year"])] = r["source"]
+    years = sorted(by)
+    first, latest = years[0], years[-1]
+
+    def col(measure):
+        return [by[y].get(measure) for y in years]
+
+    # -- headline -------------------------------------------------------------
+    d_now = by[latest].get("debito_fine_anno")
+    d_first = by[first].get("debito_fine_anno")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric(f"Debito a fine {latest}", fmt_eur(d_now))
+    if d_now is not None and d_first:
+        delta = d_now - d_first
+        pct = delta / d_first * 100
+        m2.metric(f"Variazione dal {first}", fmt_eur(delta), f"{pct:+.1f}%",
+                  delta_color="inverse",
+                  help="Un calo del debito è positivo per i conti dell'ente.")
+    pc = by[latest].get("debito_pro_capite")
+    if pc is not None:
+        m3.metric(f"Debito per abitante {latest}", f"{_fmt_plain(pc, 2)} €",
+                  help="Debito a fine anno diviso il numero di residenti al 31/12.")
+    on = by[latest].get("oneri_finanziari")
+    if on is not None:
+        m4.metric(f"Interessi {latest}", fmt_eur(on),
+                  help="Oneri finanziari: gli interessi passivi pagati nell'anno sui prestiti.")
+
+    # -- debt stock over time -------------------------------------------------
+    st.subheader("Debito residuo a fine anno")
+    stock = [(y, by[y].get("debito_fine_anno")) for y in years if by[y].get("debito_fine_anno") is not None]
+    if stock:
+        xs = [y for y, _ in stock]
+        vals = [v for _, v in stock]
+        fig = go.Figure(go.Bar(
+            x=xs, y=[scale_eur(v) for v in vals],
+            text=[fmt_eur(v) for v in vals], textposition="outside",
+            marker_color=_PALETTE[0],
+            hovertemplate="<b>%{x}</b><br>%{y:,.0f} " + eur_unit() + "<extra></extra>"))
+        fig.update_layout(height=380, yaxis_title=eur_unit(), xaxis=dict(dtick=1),
+                          margin=dict(t=20, b=10))
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            f"Il debito è passato da {fmt_eur(stock[0][1])} ({stock[0][0]}) a "
+            f"{fmt_eur(stock[-1][1])} ({stock[-1][0]}).")
+
+    # -- annual flows: new loans vs repayments --------------------------------
+    st.subheader("Flussi annuali: nuovi prestiti contro rimborsi")
+    nuovi = col("nuovi_prestiti")
+    rimb = col("prestiti_rimborsati")
+    if any(v is not None for v in nuovi) or any(v is not None for v in rimb):
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=years, y=[scale_eur(v) for v in nuovi], name="Nuovi prestiti (+)",
+            marker_color="#d97706",
+            hovertemplate="<b>%{x}</b><br>Nuovi prestiti: %{y:,.0f} " + eur_unit() + "<extra></extra>"))
+        fig.add_trace(go.Bar(
+            x=years, y=[scale_eur(v) for v in rimb], name="Prestiti rimborsati (-)",
+            marker_color="#2563eb",
+            hovertemplate="<b>%{x}</b><br>Rimborsi: %{y:,.0f} " + eur_unit() + "<extra></extra>"))
+        fig.update_layout(barmode="group", height=380, yaxis_title=eur_unit(),
+                          xaxis=dict(dtick=1), margin=dict(t=20, b=10),
+                          legend=dict(orientation="h", y=-0.18))
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            "Quando i rimborsi superano i nuovi prestiti, il debito complessivo "
+            "diminuisce. La quota capitale rimborsata coincide con i rimborsi qui sopra.")
+
+    # -- interest and total debt service --------------------------------------
+    st.subheader("Oneri finanziari e servizio del debito")
+    oneri = col("oneri_finanziari")
+    if any(v is not None for v in oneri):
+        servizio = [
+            (o + r) if (o is not None and r is not None) else None
+            for o, r in zip(oneri, rimb)
+        ]
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=years, y=[scale_eur(v) for v in oneri], name="Oneri finanziari (interessi)",
+            marker_color="#dc2626",
+            hovertemplate="<b>%{x}</b><br>Interessi: %{y:,.0f} " + eur_unit() + "<extra></extra>"))
+        fig.add_trace(go.Scatter(
+            x=years, y=[scale_eur(v) for v in servizio], name="Servizio del debito (interessi + capitale)",
+            mode="lines+markers", marker_color="#111827",
+            hovertemplate="<b>%{x}</b><br>Servizio totale: %{y:,.0f} " + eur_unit() + "<extra></extra>"))
+        fig.update_layout(height=380, yaxis_title=eur_unit(), xaxis=dict(dtick=1),
+                          margin=dict(t=20, b=10), legend=dict(orientation="h", y=-0.18))
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            "**Oneri finanziari** = interessi passivi pagati nell'anno. **Servizio del "
+            "debito** = interessi + quota capitale rimborsata, cioè l'esborso annuo "
+            "complessivo per il debito.")
+
+    # -- debt per resident ----------------------------------------------------
+    pcs = [(y, by[y].get("debito_pro_capite")) for y in years if by[y].get("debito_pro_capite") is not None]
+    if pcs:
+        st.subheader("Debito medio per abitante")
+        xs = [y for y, _ in pcs]
+        vals = [v for _, v in pcs]
+        fig = go.Figure(go.Bar(
+            x=xs, y=[float(v) for v in vals],
+            text=[f"{_fmt_plain(v, 0)} €" for v in vals], textposition="outside",
+            marker_color=_PALETTE[2],
+            hovertemplate="<b>%{x}</b><br>%{y:,.0f} € per abitante<extra></extra>"))
+        fig.update_layout(height=340, yaxis_title="€ per abitante", xaxis=dict(dtick=1),
+                          margin=dict(t=20, b=10))
+        st.plotly_chart(fig, use_container_width=True)
+        missing = [y for y in years if by[y].get("debito_pro_capite") is None]
+        if missing:
+            st.caption(
+                "Dato non riportato nelle tabelle per: "
+                + ", ".join(str(y) for y in missing) + ".")
+
+    # -- full table + CSV -----------------------------------------------------
+    st.subheader("Tutti i dati")
+    table = {"misura": [DEBITO_MEASURES[m][0] for m in DEBITO_MEASURES]}
+    for y in years:
+        table[str(y)] = [
+            (fmt_eur(by[y].get(m)) if DEBITO_MEASURES[m][1] == "EUR"
+             else (f"{_fmt_plain(by[y].get(m), 2)} €" if DEBITO_MEASURES[m][1] == "EUR_AB"
+                   else _fmt_plain(by[y].get(m), 0)))
+            if by[y].get(m) is not None else "-"
+            for m in DEBITO_MEASURES
+        ]
+    st.dataframe(pd.DataFrame(table), use_container_width=True, hide_index=True)
+    st.download_button(
+        "Scarica CSV", pd.DataFrame(rows).to_csv(index=False).encode("utf-8"),
+        file_name="debito_comune_torino.csv", mime="text/csv")
+
+    with st.expander("Fonti"):
+        for y in years:
+            st.markdown(f"- **{y}** — {src_by_year[y]}")
 
 
 def page_open_data():
@@ -792,7 +940,7 @@ PAGES = {
     "Confronto tra anni": page_comparison,
     "Esplora le partecipate": page_entities,
     "Rendiconto della gestione": page_rendiconto,
-    "Ricerca": page_search,
+    "Debito del Comune": page_debito,
     "Dati aperti / per LLM": page_open_data,
 }
 

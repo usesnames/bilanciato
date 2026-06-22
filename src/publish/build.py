@@ -143,6 +143,7 @@ def build_data_files(repo: Repository, data_dir: Path) -> dict[str, int]:
     entity_metrics = repo.all_entity_metrics()
     notes = repo.all_note_items()
     rendiconto = repo.all_rendiconto()
+    debito = repo.all_debito()
 
     # Multi-year series for the headline totals (one authoritative value per year).
     timeseries = {}
@@ -157,26 +158,29 @@ def build_data_files(repo: Repository, data_dir: Path) -> dict[str, int]:
     _write_json(data_dir / "entity_metrics.json", entity_metrics)
     _write_json(data_dir / "note_items.json", notes)
     _write_json(data_dir / "rendiconto.json", rendiconto)
+    _write_json(data_dir / "debito.json", debito)
     _write_json(data_dir / "timeseries.json", timeseries)
     _write_csv(data_dir / "metrics.csv", metrics)
     _write_csv(data_dir / "entities.csv", entities)
     _write_csv(data_dir / "entity_metrics.csv", entity_metrics)
     _write_csv(data_dir / "note_items.csv", notes)
     _write_csv(data_dir / "rendiconto.csv", rendiconto)
+    _write_csv(data_dir / "debito.csv", debito)
 
     # A small index so a fetch of data/ is self-describing.
     _write_json(data_dir / "index.json", {
         "documents": len(docs), "metrics": len(metrics), "entities": len(entities),
         "entity_metrics": len(entity_metrics), "note_items": len(notes),
-        "rendiconto": len(rendiconto),
+        "rendiconto": len(rendiconto), "debito": len(debito),
         "files": ["documents.json", "metrics.json", "entities.json",
                   "entity_metrics.json", "note_items.json", "rendiconto.json",
-                  "timeseries.json", "metrics.csv", "entities.csv",
-                  "entity_metrics.csv", "note_items.csv", "rendiconto.csv"],
+                  "debito.json", "timeseries.json", "metrics.csv", "entities.csv",
+                  "entity_metrics.csv", "note_items.csv", "rendiconto.csv",
+                  "debito.csv"],
     })
     return {"documents": len(docs), "metrics": len(metrics), "entities": len(entities),
             "entity_metrics": len(entity_metrics), "note_items": len(notes),
-            "rendiconto": len(rendiconto)}
+            "rendiconto": len(rendiconto), "debito": len(debito)}
 
 
 def build_year_page(repo: Repository, out: Path, year: int, filename: str) -> None:
@@ -284,6 +288,10 @@ def build_llms_txt(repo: Repository, out: Path, doc_years: list[tuple[int, str]]
               "solo Comune (conto del bilancio): spese per missione ed entrate per titolo, "
               "con previsioni, impegni/accertamenti (competenza) e pagamenti/riscossioni "
               "(cassa). NB: base finanziaria e perimetro diversi dal bilancio consolidato.",
+              "- [debito.json](data/debito.json): evoluzione dell'indebitamento del Comune "
+              "2018-2025 (residuo debito, nuovi prestiti, rimborsi, debito a fine anno, "
+              "oneri finanziari/interessi, abitanti, debito per abitante); fonte: Relazioni "
+              "del Collegio dei revisori dei conti.",
               "- versioni CSV degli stessi file in [data/](data/)",
               "",
               "## Note",

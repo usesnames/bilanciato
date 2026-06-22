@@ -368,3 +368,30 @@ class Repository:
                FROM note_items ni JOIN documents d ON d.id = ni.document_id
                ORDER BY ni.year DESC, ni.source_page, ni.table_index"""
         )
+
+    # -- debito (curated municipal-debt series) -----------------------------
+    def debito_years(self) -> list[int]:
+        rows = self._rows("SELECT DISTINCT year FROM debito ORDER BY year")
+        return [int(r["year"]) for r in rows]
+
+    def debito_measures(self) -> list[str]:
+        rows = self._rows("SELECT DISTINCT measure FROM debito")
+        return [r["measure"] for r in rows]
+
+    def debito(self, measure: str | None = None) -> list[dict[str, Any]]:
+        """Debt rows (optionally one measure), each carrying its source relazione."""
+        where, params = "", []
+        if measure is not None:
+            where = "WHERE measure = ?"
+            params.append(measure)
+        return self._rows(
+            f"""SELECT year, measure, value, unit, source
+                FROM debito {where} ORDER BY year, measure""",
+            params,
+        )
+
+    def all_debito(self) -> list[dict[str, Any]]:
+        return self._rows(
+            "SELECT year, measure, value, unit, source FROM debito "
+            "ORDER BY year, measure"
+        )

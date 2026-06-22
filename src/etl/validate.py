@@ -19,6 +19,7 @@ from pathlib import Path
 
 from collections import defaultdict
 
+from src.normalization.debito import DebitoItem
 from src.normalization.note_tables import NoteItem
 from src.normalization.rendiconto import RendicontoItem
 from src.normalization.statements import NormalizedRow
@@ -278,6 +279,49 @@ def validate_rendiconto_totals(items: list[RendicontoItem]) -> list[Check]:
             f"{checked} totali (voci vs totale generale) verificati, "
             f"{len(mismatches)} non quadrano. {detail}",
         )
+    ]
+
+
+def validate_debito(items: list[DebitoItem]) -> list[Check]:
+    """Cross-check the curated municipal-debt series for internal consistency.
+
+    Two invariants taken from the source tables themselves:
+    * chaining -- the *debito a fine anno* of year N equals the *residuo debito*
+      at the start of year N+1;
+    * per-capita -- *debito medio per abitante == debito a fine anno / abitanti*
+      (to the nearest euro), where both figures are present.
+    """
+    by: dict[tuple[int, str], Decimal] = {(i.year, i.measure): i.value for i in items}
+    years = sorted({i.year for i in items})
+
+    chain_bad = []
+    for y in years:
+        nxt = (y + 1, "residuo_iniziale")
+        cur = (y, "debito_fine_anno")
+        if cur in by and nxt in by and by[cur] != by[nxt]:
+            chain_bad.append(f"{y}->{y + 1}: Δ={by[cur] - by[nxt]}")
+
+    pc_bad = []
+    for y in years:
+        fine, ab, pc = (y, "debito_fine_anno"), (y, "abitanti"), (y, "debito_pro_capite")
+        if fine in by and ab in by and pc in by and by[ab]:
+            expected = by[fine] / by[ab]
+            if abs(expected - by[pc]) > Decimal("0.5"):
+                pc_bad.append(f"{y}: atteso~{expected:.2f} vs {by[pc]}")
+
+    return [
+        Check(
+            "debito_chain",
+            not chain_bad and len(years) > 1,
+            (f"{len(years)} anni concatenati (fine anno N == inizio anno N+1); "
+             f"{len(chain_bad)} salti. " + ("; ".join(chain_bad) or "tutto coerente")),
+        ),
+        Check(
+            "debito_pro_capite",
+            not pc_bad,
+            (f"debito/abitanti == pro-capite verificato; {len(pc_bad)} scostamenti. "
+             + ("; ".join(pc_bad) or "tutto coerente")),
+        ),
     ]
 
 

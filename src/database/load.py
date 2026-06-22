@@ -16,6 +16,7 @@ from src.extraction.pdf_tables import ExtractedSection
 from src.normalization.entities import Entity
 from src.normalization.entity_financials import EntityMetric
 from src.normalization.entity_names import canonicalize
+from src.normalization.debito import DebitoItem
 from src.normalization.note_tables import NoteItem
 from src.normalization.rendiconto import RendicontoItem
 from src.normalization.statements import NormalizedRow
@@ -164,6 +165,25 @@ def insert_rendiconto(
         """INSERT INTO rendiconto
            (id, document_id, year, kind, level, code, name, measure, value, unit, source_page)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        records,
+    )
+    return len(records)
+
+
+def replace_debito(con: duckdb.DuckDBPyConnection, items: list[DebitoItem]) -> int:
+    """Replace the whole curated debt series (it is not document-scoped).
+
+    Idempotent: clears the ``debito`` table and re-inserts, so re-running the
+    loader after editing the curated figures yields a clean, deterministic state.
+    """
+    con.execute("DELETE FROM debito")
+    records = [
+        (i + 1, it.year, it.measure, it.value, it.unit, it.source)
+        for i, it in enumerate(items)
+    ]
+    con.executemany(
+        "INSERT INTO debito (id, year, measure, value, unit, source) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
         records,
     )
     return len(records)

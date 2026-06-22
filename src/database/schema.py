@@ -118,6 +118,22 @@ CREATE TABLE IF NOT EXISTS rendiconto (
     source_page INTEGER NOT NULL
 );
 
+-- Indebtedness of the Comune di Torino (curated from the Relazioni del Collegio
+-- dei revisori dei conti, 2018-2025). Standalone -- it is NOT extracted from a
+-- registered PDF, so it has no document_id FK; the source relazione is recorded
+-- per row instead. Long-format: one row per (year x measure).
+--   measure  residuo_iniziale | nuovi_prestiti | prestiti_rimborsati |
+--            debito_fine_anno | oneri_finanziari | abitanti | debito_pro_capite
+--   unit     EUR | ABITANTI | EUR_AB
+CREATE TABLE IF NOT EXISTS debito (
+    id       INTEGER PRIMARY KEY,
+    year     INTEGER NOT NULL,
+    measure  VARCHAR NOT NULL,
+    value    DECIMAL(20, 2),
+    unit     VARCHAR NOT NULL DEFAULT 'EUR',
+    source   VARCHAR NOT NULL
+);
+
 -- The entity-name crosswalk: every raw name seen in any source mapped to its
 -- canonical slug/name. This is the "normalization map" as a queryable object.
 CREATE OR REPLACE VIEW entity_crosswalk AS
