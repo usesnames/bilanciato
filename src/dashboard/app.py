@@ -738,9 +738,11 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             color=lab1, color_discrete_sequence=_PALETTE, maxdepth=4)
         fig.update_traces(
             root_color="lightgrey",
+            textfont_size=15,
             hovertemplate="<b>%{label}</b><br>%{value:,.0f} " + eur_unit()
             + "<br>%{percentRoot} del totale<extra></extra>")
         fig.update_layout(height=560, margin=dict(t=36, b=10),
+                          uniformtext=dict(minsize=12, mode="hide"),
                           title=f"{root} {year} · {measure_label} — clic per esplodere fino al capitolo")
         st.plotly_chart(fig, use_container_width=True)
         st.caption(
@@ -1112,7 +1114,6 @@ def page_open_data():
 
 
 PAGES = {
-    "Panoramica": page_overview,
     "Prospetti di bilancio": page_statements,
     "Confronto tra anni": page_comparison,
     "Esplora le partecipate": page_entities,
