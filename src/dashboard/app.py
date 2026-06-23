@@ -192,8 +192,9 @@ def capitoli_liv1(*, kind: str, year: int):
 
 
 @st.cache_data(ttl=300)
-def capitoli(*, kind: str, year: int, measure: str, liv1=None, liv2=None):
-    return get_repo().capitoli(kind=kind, year=year, measure=measure, liv1=liv1, liv2=liv2)
+def capitoli(*, kind: str, year: int, measure: str, liv1=None, liv2=None, limit: int = 5000):
+    return get_repo().capitoli(
+        kind=kind, year=year, measure=measure, liv1=liv1, liv2=liv2, limit=limit)
 
 
 @st.cache_data(ttl=300)
@@ -701,8 +702,8 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             f"capitolo di bilancio (misura: {measure_label.lower()}). Fonte: Conto di "
             "Bilancio D.Lgs 118 analitico per capitoli. I capitoli sommano esattamente "
             "agli aggregati per missione/titolo qui sopra.")
-        tree = capitoli_tree(kind=kind, year=year, measure=measure)
-        df = pd.DataFrame(tree)
+        leaf = capitoli(kind=kind, year=year, measure=measure, limit=100000)
+        df = pd.DataFrame(leaf)
         if not df.empty:
             df = df[df["value"].astype(float) > 0].copy()
         if df.empty:
@@ -711,17 +712,25 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
         df[lab1] = df["liv1_code"].astype(str) + " · " + df["liv1_name"].astype(str)
         df[lab2] = df["liv2_name"].fillna("—").astype(str)
         df[lab3] = df["liv3_name"].fillna("—").astype(str)
+        # Make the capitolo leaf label unique within its parent (code + short name).
+        df["Capitolo"] = (df["capitolo_code"].astype(str) + " · "
+                          + df["denominazione"].astype(str).str.slice(0, 60))
         df["val"] = [float(scale_eur(v)) for v in df["value"]]
+        # Full path down to the single capitolo; maxdepth keeps the initial view at
+        # the macro-area level and reveals capitoli on click (responsive with ~4k leaves).
         fig = px.treemap(
-            df, path=[px.Constant(root), lab1, lab2, lab3], values="val",
-            color=lab1, color_discrete_sequence=_PALETTE)
+            df, path=[px.Constant(root), lab1, lab2, lab3, "Capitolo"], values="val",
+            color=lab1, color_discrete_sequence=_PALETTE, maxdepth=4)
         fig.update_traces(
             root_color="lightgrey",
             hovertemplate="<b>%{label}</b><br>%{value:,.0f} " + eur_unit()
             + "<br>%{percentRoot} del totale<extra></extra>")
-        fig.update_layout(height=540, margin=dict(t=36, b=10),
-                          title=f"{root} {year} · {measure_label} (clic per esplodere)")
+        fig.update_layout(height=560, margin=dict(t=36, b=10),
+                          title=f"{root} {year} · {measure_label} — clic per esplodere fino al capitolo")
         st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            "Sono mostrati i primi livelli della gerarchia; **clicca un riquadro per "
+            "zoomare** e scendere fino ai singoli capitoli di bilancio.")
 
         # -- drill-down table for one missione/titolo (+ optional programma) ----
         st.markdown(f"**Capitoli di una {lab1.lower()}**")
@@ -730,7 +739,7 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
         c1, c2 = st.columns(2)
         pick1 = c1.selectbox(lab1, list(opts), key="cap_liv1")
         l1code = opts[pick1]
-        sub = sorted({(r["liv2_code"], r["liv2_name"]) for r in tree
+        sub = sorted({(r["liv2_code"], r["liv2_name"]) for r in leaf
                       if r["liv1_code"] == l1code and r["liv2_code"]},
                      key=lambda x: x[0] or "")
         sub_opts = {"Tutti": None} | {f"{c} · {n}": c for c, n in sub}
