@@ -104,6 +104,30 @@ def test_rendiconto_validator_fails_on_broken_total():
 
 
 @pytest.mark.skipif(not DB_PATH.exists(), reason="database not built")
+def test_confronto_comuni_includes_torino_matching_rendiconto():
+    """The cross-city comparison table carries at least Torino, and Torino's totals
+    there equal the authoritative ``rendiconto`` totals (same BDAP source)."""
+    from src.database.queries import Repository
+
+    repo = Repository()
+    try:
+        cities = {c["comune"] for c in repo.confronto_cities()}
+        if not cities:
+            pytest.skip("no comparison data loaded")
+        assert "TORINO" in cities
+        for kind, measure in (("spesa", "pagamenti_totali"), ("entrata", "riscossioni_totali")):
+            conf = {int(r["year"]): float(r["value"])
+                    for r in repo.confronto_totals(kind=kind, measure=measure)
+                    if r["comune"] == "TORINO"}
+            for year, val in conf.items():
+                tot = repo.rendiconto_total(kind=kind, measure=measure, year=year)
+                assert tot is not None and abs(float(tot["value"]) - val) < 0.01, (
+                    f"{year} {kind} {measure}: comparison {val} != rendiconto {tot}")
+    finally:
+        repo.close()
+
+
+@pytest.mark.skipif(not DB_PATH.exists(), reason="database not built")
 def test_rendiconto_ingested_and_reconciles():
     from src.database.queries import Repository
 

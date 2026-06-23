@@ -145,6 +145,7 @@ def build_data_files(repo: Repository, data_dir: Path) -> dict[str, int]:
     rendiconto = repo.all_rendiconto()
     debito = repo.all_debito()
     capitoli = repo.all_capitoli()  # analytic per-capitolo detail (large: CSV only)
+    confronto = repo.all_rendiconto_comuni()  # città metropolitane comparison (BDAP)
 
     # Multi-year series for the headline totals (one authoritative value per year).
     timeseries = {}
@@ -160,6 +161,9 @@ def build_data_files(repo: Repository, data_dir: Path) -> dict[str, int]:
     _write_json(data_dir / "note_items.json", notes)
     _write_json(data_dir / "rendiconto.json", rendiconto)
     _write_json(data_dir / "debito.json", debito)
+    if confronto:
+        _write_json(data_dir / "confronto_comuni.json", confronto)
+        _write_csv(data_dir / "confronto_comuni.csv", confronto)
     _write_json(data_dir / "timeseries.json", timeseries)
     _write_csv(data_dir / "metrics.csv", metrics)
     _write_csv(data_dir / "entities.csv", entities)
@@ -175,16 +179,18 @@ def build_data_files(repo: Repository, data_dir: Path) -> dict[str, int]:
         "documents": len(docs), "metrics": len(metrics), "entities": len(entities),
         "entity_metrics": len(entity_metrics), "note_items": len(notes),
         "rendiconto": len(rendiconto), "debito": len(debito), "capitoli": len(capitoli),
+        "confronto_comuni": len(confronto),
         "files": ["documents.json", "metrics.json", "entities.json",
                   "entity_metrics.json", "note_items.json", "rendiconto.json",
                   "debito.json", "timeseries.json", "metrics.csv", "entities.csv",
                   "entity_metrics.csv", "note_items.csv", "rendiconto.csv",
-                  "debito.csv", "capitoli.csv"],
+                  "debito.csv", "capitoli.csv"]
+                 + (["confronto_comuni.json", "confronto_comuni.csv"] if confronto else []),
     })
     return {"documents": len(docs), "metrics": len(metrics), "entities": len(entities),
             "entity_metrics": len(entity_metrics), "note_items": len(notes),
             "rendiconto": len(rendiconto), "debito": len(debito),
-            "capitoli": len(capitoli)}
+            "capitoli": len(capitoli), "confronto_comuni": len(confronto)}
 
 
 def build_year_page(repo: Repository, out: Path, year: int, filename: str) -> None:
@@ -300,6 +306,9 @@ def build_llms_txt(repo: Repository, out: Path, doc_years: list[tuple[int, str]]
               "(Conto di Bilancio D.Lgs 118 analitico) -- ogni capitolo di spesa/entrata con "
               "missione/programma/macroaggregato (o titolo/tipologia/categoria), previsioni, "
               "competenza, cassa e residui. I capitoli sommano agli aggregati per missione/titolo.",
+              "- [confronto_comuni.json](data/confronto_comuni.json): rendiconto della "
+              "gestione (per missione/titolo) delle città metropolitane, dalle open data "
+              "BDAP/RGS, per confronto tra città sulle stesse misure (cassa/competenza).",
               "- versioni CSV degli stessi file in [data/](data/)",
               "",
               "## Note",

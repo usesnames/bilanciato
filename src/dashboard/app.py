@@ -177,6 +177,16 @@ def rendiconto_total(*, kind: str, measure: str, year: int):
 
 
 @st.cache_data(ttl=300)
+def confronto_cities():
+    return get_repo().confronto_cities()
+
+
+@st.cache_data(ttl=300)
+def confronto_totals(*, kind: str, measure: str):
+    return get_repo().confronto_totals(kind=kind, measure=measure)
+
+
+@st.cache_data(ttl=300)
 def capitoli_years():
     return get_repo().capitoli_years()
 
@@ -868,7 +878,9 @@ def page_rendiconto():
     helps = RENDICONTO_MEASURE_HELP[kind]
     measure = c2.selectbox(
         "Misura", list(measures), format_func=lambda m: measures[m],
-        index=list(measures).index("impegni" if kind == "spesa" else "accertamenti"),
+        # Default to actual cash (pagamenti / riscossioni): what was really spent
+        # and collected in the year is the figure most users want first.
+        index=list(measures).index("pagamenti_totali" if kind == "spesa" else "riscossioni_totali"),
         help="**Previsioni** = stanziamento autorizzato · **Competenza** "
              "(impegni/accertamenti) = obbligazioni sorte nell'anno · **Cassa** "
              "(pagamenti/riscossioni) = denaro effettivamente movimentato.")
@@ -955,6 +967,91 @@ def page_rendiconto():
     core = {"previsioni", "impegni", "pagamenti_totali", "accertamenti", "riscossioni_totali"}
     if capitoli_years() and measure in core:
         _render_capitoli_detail(kind, measure, measures[measure])
+
+
+def page_confronto():
+    st.header("Confronto città metropolitane")
+    cities = confronto_cities()
+    if not cities:
+        st.info(
+            "Nessun dato di confronto caricato. Scarica gli ZIP BDAP delle regioni "
+            "interessate in `uploads/bdap_rendiconto/` ed esegui "
+            "`python -m src.etl.load_bdap_comuni`."
+        )
+        return
+    st.info(
+        "**Confronto del rendiconto della gestione tra le città metropolitane** — "
+        "stessi dati (solo Comune, base finanziaria cassa/competenza) del rendiconto "
+        "di Torino, presi dalle **open data BDAP/RGS** (https://openbdap.rgs.mef.gov.it) "
+        "così da essere confrontabili tra comuni. Sono mostrate le città già caricate; "
+        "l'elenco cresce man mano che si scaricano le altre regioni."
+    )
+
+    c1, c2 = st.columns([1.4, 1.6])
+    side = c1.radio("Vista", ["Spese (pagamenti/impegni)", "Entrate (riscossioni/accertamenti)"],
+                    horizontal=False, key="conf_side")
+    kind = "spesa" if side.startswith("Spese") else "entrata"
+    measures = RENDICONTO_MEASURES[kind]
+    measure = c2.selectbox(
+        "Misura", list(measures), format_func=lambda m: measures[m],
+        # Default to actual cash (pagamenti / riscossioni), as on the Torino page.
+        index=list(measures).index("pagamenti_totali" if kind == "spesa" else "riscossioni_totali"),
+        key="conf_measure",
+        help="**Cassa** (pagamenti/riscossioni) = denaro effettivamente movimentato · "
+             "**Competenza** (impegni/accertamenti) = obbligazioni sorte nell'anno · "
+             "**Previsioni** = stanziamento definitivo.")
+
+    rows = confronto_totals(kind=kind, measure=measure)
+    if not rows:
+        st.info("Nessun valore per questa selezione.")
+        return
+    df = pd.DataFrame(rows)
+
+    # -- multi-year line: one series per city ---------------------------------
+    st.subheader(f"Andamento nel tempo · {measures[measure]}")
+    fig = go.Figure()
+    order = (df.groupby("comune")["value"].max().sort_values(ascending=False).index.tolist())
+    for idx, comune in enumerate(order):
+        d = df[df["comune"] == comune].sort_values("year")
+        fig.add_trace(go.Scatter(
+            x=d["year"], y=[scale_eur(v) for v in d["value"]], mode="lines+markers",
+            name=comune.title(), marker_color=_PALETTE[idx % len(_PALETTE)],
+            hovertemplate="<b>" + comune.title() + "</b><br>%{x}: %{y:,.0f} "
+            + eur_unit() + "<extra></extra>"))
+    fig.update_layout(height=460, yaxis_title=eur_unit(), xaxis=dict(dtick=1, title=""),
+                      margin=dict(t=20, b=10), legend=dict(orientation="h", y=-0.18),
+                      hoverlabel=dict(align="left"))
+    st.plotly_chart(fig, use_container_width=True)
+
+    # -- single-year ranking --------------------------------------------------
+    yrs = sorted({int(y) for y in df["year"]}, reverse=True)
+    st.subheader("Classifica per anno")
+    year = st.selectbox("Anno", yrs, key="conf_year")
+    yr = df[df["year"] == year].sort_values("value", ascending=False)
+    fig2 = go.Figure(go.Bar(
+        x=[scale_eur(v) for v in yr["value"]], y=[c.title() for c in yr["comune"]],
+        orientation="h", text=[fmt_eur(v) for v in yr["value"]], textposition="auto",
+        marker_color=[_PALETTE[i % len(_PALETTE)] for i in range(len(yr))],
+        hovertemplate="<b>%{y}</b><br>%{x:,.0f} " + eur_unit() + "<extra></extra>"))
+    fig2.update_layout(height=max(280, 40 * len(yr)), xaxis_title=eur_unit(),
+                       yaxis=dict(autorange="reversed"), margin=dict(t=10, b=10),
+                       title=f"{measures[measure]} — {year}")
+    st.plotly_chart(fig2, use_container_width=True)
+
+    # -- coverage + download ---------------------------------------------------
+    cov = pd.DataFrame(cities)
+    cov["città"] = cov["comune"].str.title()
+    cov = cov[["città", "region", "first_year", "last_year", "n_years"]].rename(columns={
+        "region": "regione", "first_year": "dal", "last_year": "al", "n_years": "anni"})
+    n_tot = 14
+    st.caption(f"Città metropolitane caricate: **{len(cities)}/{n_tot}**. "
+               "Le altre compaiono qui dopo aver scaricato gli ZIP BDAP della loro regione.")
+    with st.expander("Copertura e fonte dei dati"):
+        st.dataframe(cov, use_container_width=True, hide_index=True)
+        st.caption(f"Fonte: {df['source'].iloc[0]} (e analoghi per anno/città).")
+    st.download_button(
+        "Scarica CSV", df.to_csv(index=False).encode("utf-8"),
+        file_name=f"confronto_{kind}_{measure}.csv", mime="text/csv")
 
 
 def _fmt_plain(v, dec: int = 0) -> str:
@@ -1152,6 +1249,7 @@ PAGES = {
     "Confronto tra anni": page_comparison,
     "Esplora le partecipate": page_entities,
     "Rendiconto della gestione": page_rendiconto,
+    "Confronto città metropolitane": page_confronto,
     "Debito del Comune": page_debito,
     "Dati aperti / per LLM": page_open_data,
 }

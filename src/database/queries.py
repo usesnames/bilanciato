@@ -291,6 +291,39 @@ class Repository:
             [kind, measure, year],
         )
 
+    # -- cross-city comparison (città metropolitane, from BDAP) -------------
+    def confronto_cities(self) -> list[dict[str, Any]]:
+        """The comuni available for comparison, with their year span."""
+        return self._rows(
+            """SELECT comune, region, min(year) AS first_year, max(year) AS last_year,
+                      count(DISTINCT year) AS n_years
+               FROM rendiconto_comuni
+               GROUP BY comune, region
+               ORDER BY comune"""
+        )
+
+    def confronto_years(self) -> list[int]:
+        rows = self._rows("SELECT DISTINCT year FROM rendiconto_comuni ORDER BY year")
+        return [int(r["year"]) for r in rows]
+
+    def confronto_totals(self, *, kind: str, measure: str) -> list[dict[str, Any]]:
+        """Grand total per (comune, year) for one kind/measure — the comparison series."""
+        return self._rows(
+            """SELECT comune, region, year, value, source
+               FROM rendiconto_comuni
+               WHERE kind = ? AND measure = ? AND level = 'totale'
+               ORDER BY comune, year""",
+            [kind, measure],
+        )
+
+    def all_rendiconto_comuni(self) -> list[dict[str, Any]]:
+        return self._rows(
+            """SELECT comune, region, year, kind, level, code, name, measure,
+                      value, unit, source
+               FROM rendiconto_comuni
+               ORDER BY comune, year DESC, kind, measure, code NULLS LAST"""
+        )
+
     # -- search -------------------------------------------------------------
     def search(self, query: str, limit: int = 50) -> dict[str, list[dict[str, Any]]]:
         """Free-text search across metric names, entity names and note voci."""

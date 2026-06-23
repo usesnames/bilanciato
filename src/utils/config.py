@@ -168,20 +168,19 @@ class RendicontoProfile:
     spese_missioni_pages: tuple[int, int]  # (start, end) of RIEPILOGO ... SPESE PER MISSIONI
 
 
-RENDICONTO_PROFILES: dict[str, RendicontoProfile] = {
-    "RENDICONTO_2020_testo_coord._con_copertina-indice-n._pagine.pdf": RendicontoProfile(
-        "rendiconto_gestione", 2020, (10, 11), (44, 47)),
-    "All. 1 Rendiconto 2021 TESTO INTEGRATO.pdf": RendicontoProfile(
-        "rendiconto_gestione", 2021, (10, 11), (44, 47)),
-    "All. n. 1 Rendiconto 2022.pdf": RendicontoProfile(
-        "rendiconto_gestione", 2022, (8, 9), (42, 45)),
-    "All. n. 1 Rendiconto 2023_249.pdf": RendicontoProfile(
-        "rendiconto_gestione", 2023, (10, 11), (45, 48)),
-    "All. n.  1 Rendiconto 2024.pdf": RendicontoProfile(
-        "rendiconto_gestione", 2024, (10, 11), (45, 48)),
-    "All. n. 1 Rendiconto 2025.pdf": RendicontoProfile(
-        "rendiconto_gestione", 2025, (10, 11), (44, 47)),
-}
+# The per-missione/per-titolo rendiconto summary is now sourced from the BDAP/RGS
+# open data (uniform 2016–2025, machine-readable) via ``src.etl.load_bdap_rendiconto``,
+# which superseded this PDF parsing. The PDF parser (``src.normalization.rendiconto``)
+# and its unit tests are kept; the profiles below are left empty so ``src.etl.ingest``
+# no longer re-creates the summary from PDFs (which would clash with the BDAP load).
+# Historical PDF layouts, for provenance:
+#   RENDICONTO_2020_..._n._pagine.pdf      2020  entrate (10,11)  spese (44,47)
+#   All. 1 Rendiconto 2021 TESTO INTEGRATO 2021  entrate (10,11)  spese (44,47)
+#   All. n. 1 Rendiconto 2022.pdf          2022  entrate (8,9)    spese (42,45)
+#   All. n. 1 Rendiconto 2023_249.pdf      2023  entrate (10,11)  spese (45,48)
+#   All. n.  1 Rendiconto 2024.pdf         2024  entrate (10,11)  spese (45,48)
+#   All. n. 1 Rendiconto 2025.pdf          2025  entrate (10,11)  spese (44,47)
+RENDICONTO_PROFILES: dict[str, RendicontoProfile] = {}
 
 
 @dataclass(frozen=True)

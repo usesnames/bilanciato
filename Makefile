@@ -1,4 +1,4 @@
-.PHONY: install ingest load-debito load-rendiconto-csv dashboard publish serve-site test lint format clean
+.PHONY: install ingest load-bdap-rendiconto load-debito load-rendiconto-csv dashboard publish serve-site test lint format clean
 
 PY := .venv/bin/python
 PIP := .venv/bin/pip
@@ -8,6 +8,9 @@ install:  ## install all dependencies into .venv
 
 ingest:  ## run the ETL over every profiled PDF in uploads/
 	$(PY) -m src.etl.ingest
+
+load-bdap-rendiconto:  ## (re)load Torino's rendiconto summary 2016-2025 from the BDAP/RGS open-data ZIPs
+	$(PY) -m src.etl.load_bdap_rendiconto
 
 load-debito:  ## load the curated municipal-debt series (Collegio dei revisori) into DuckDB
 	$(PY) -m src.etl.load_debito

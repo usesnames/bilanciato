@@ -162,6 +162,29 @@ CREATE TABLE IF NOT EXISTS debito (
     source   VARCHAR NOT NULL
 );
 
+-- Rendiconto della gestione (summary, per-missione/per-titolo) of OTHER comuni,
+-- for cross-city comparison (the 14 città metropolitane). Sourced in bulk from the
+-- BDAP/RGS per-region open-data ZIPs, so — like ``debito`` — it is standalone (no
+-- document_id FK; the source ZIP/year is recorded per row). Same long-format and
+-- measures as ``rendiconto``, plus a ``comune``/``region`` dimension. The Comune di
+-- Torino is included here too, so the comparison reads a single uniform table.
+--   comune   "TORINO" | "MILANO" | ...  (BDAP "Descrizione Comune", uppercase)
+--   region   "PIEMONTE" | "LOMBARDIA" | ...
+CREATE TABLE IF NOT EXISTS rendiconto_comuni (
+    id       INTEGER PRIMARY KEY,
+    comune   VARCHAR NOT NULL,
+    region   VARCHAR NOT NULL,
+    year     INTEGER NOT NULL,
+    kind     VARCHAR NOT NULL,
+    level    VARCHAR NOT NULL,
+    code     VARCHAR,
+    name     VARCHAR NOT NULL,
+    measure  VARCHAR NOT NULL,
+    value    DECIMAL(20, 2),
+    unit     VARCHAR NOT NULL DEFAULT 'EUR',
+    source   VARCHAR NOT NULL
+);
+
 -- The entity-name crosswalk: every raw name seen in any source mapped to its
 -- canonical slug/name. This is the "normalization map" as a queryable object.
 CREATE OR REPLACE VIEW entity_crosswalk AS
