@@ -712,9 +712,11 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
         df[lab1] = df["liv1_code"].astype(str) + " · " + df["liv1_name"].astype(str)
         df[lab2] = df["liv2_name"].fillna("—").astype(str)
         df[lab3] = df["liv3_name"].fillna("—").astype(str)
-        # Make the capitolo leaf label unique within its parent (code + short name).
+        # Capitolo leaf label: code + FULL denominazione (unique within parent).
+        # The tile text is auto-clipped by plotly to fit, but the hover shows it in
+        # full, so the complete name is readable on mouse-over.
         df["Capitolo"] = (df["capitolo_code"].astype(str) + " · "
-                          + df["denominazione"].astype(str).str.slice(0, 60))
+                          + df["denominazione"].astype(str))
         df["val"] = [float(scale_eur(v)) for v in df["value"]]
         # Full path down to the single capitolo; maxdepth keeps the initial view at
         # the macro-area level and reveals capitoli on click (responsive with ~4k leaves).
