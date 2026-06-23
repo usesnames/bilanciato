@@ -19,6 +19,7 @@ from src.normalization.entity_names import canonicalize
 from src.normalization.debito import DebitoItem
 from src.normalization.note_tables import NoteItem
 from src.normalization.rendiconto import RendicontoItem
+from src.normalization.rendiconto_capitoli import CapitoloItem
 from src.normalization.statements import NormalizedRow
 
 
@@ -165,6 +166,31 @@ def insert_rendiconto(
         """INSERT INTO rendiconto
            (id, document_id, year, kind, level, code, name, measure, value, unit, source_page)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        records,
+    )
+    return len(records)
+
+
+def insert_rendiconto_capitoli(
+    con: duckdb.DuckDBPyConnection, doc_id: int, year: int, items: list[CapitoloItem]
+) -> int:
+    """Insert long-format analytic per-capitolo items."""
+    next_id = _next_id(con, "rendiconto_capitoli")
+    records = []
+    for it in items:
+        records.append(
+            (next_id, doc_id, year, it.kind, it.sezione,
+             it.liv1_code, it.liv1_name, it.liv2_code, it.liv2_name,
+             it.liv3_code, it.liv3_name, it.capitolo_code, it.denominazione,
+             it.measure, it.value, "EUR", it.page)
+        )
+        next_id += 1
+    con.executemany(
+        """INSERT INTO rendiconto_capitoli
+           (id, document_id, year, kind, sezione, liv1_code, liv1_name,
+            liv2_code, liv2_name, liv3_code, liv3_name, capitolo_code,
+            denominazione, measure, value, unit, source_page)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         records,
     )
     return len(records)

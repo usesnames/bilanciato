@@ -118,6 +118,34 @@ CREATE TABLE IF NOT EXISTS rendiconto (
     source_page INTEGER NOT NULL
 );
 
+-- Analytic per-capitolo detail of the rendiconto (Conto di Bilancio D.Lgs 118
+-- analitico). The leaf layer beneath the per-missione/per-titolo aggregates in
+-- ``rendiconto``: a missione's capitoli sum to its total. Long-format: one row
+-- per (capitolo x measure). Uniform 3-level tree + capitolo, semantics by kind:
+--   spesa   : liv1=missione, liv2=programma, liv3=macroaggregato
+--   entrata : liv1=titolo,   liv2=tipologia, liv3=categoria
+-- Core measures reuse the aggregate names (previsioni / impegni|accertamenti /
+-- pagamenti_totali|riscossioni_totali); plus residui, cassa, FPV, economie, etc.
+CREATE TABLE IF NOT EXISTS rendiconto_capitoli (
+    id            INTEGER PRIMARY KEY,
+    document_id   INTEGER NOT NULL REFERENCES documents(id),
+    year          INTEGER NOT NULL,
+    kind          VARCHAR NOT NULL,          -- spesa | entrata
+    sezione       VARCHAR,                   -- spese: titolo (correnti/conto capitale/...)
+    liv1_code     VARCHAR NOT NULL,
+    liv1_name     VARCHAR NOT NULL,
+    liv2_code     VARCHAR,
+    liv2_name     VARCHAR,
+    liv3_code     VARCHAR,
+    liv3_name     VARCHAR,
+    capitolo_code VARCHAR NOT NULL,
+    denominazione VARCHAR NOT NULL,
+    measure       VARCHAR NOT NULL,
+    value         DECIMAL(20, 2),
+    unit          VARCHAR NOT NULL DEFAULT 'EUR',
+    source_page   INTEGER NOT NULL
+);
+
 -- Indebtedness of the Comune di Torino (curated from the Relazioni del Collegio
 -- dei revisori dei conti, 2018-2025). Standalone -- it is NOT extracted from a
 -- registered PDF, so it has no document_id FK; the source relazione is recorded

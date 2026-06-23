@@ -395,3 +395,60 @@ class Repository:
             "SELECT year, measure, value, unit, source FROM debito "
             "ORDER BY year, measure"
         )
+
+    # -- rendiconto per capitoli (analytic detail) --------------------------
+    def capitoli_years(self) -> list[int]:
+        rows = self._rows("SELECT DISTINCT year FROM rendiconto_capitoli ORDER BY year")
+        return [int(r["year"]) for r in rows]
+
+    def capitoli_tree(self, *, kind: str, year: int, measure: str) -> list[dict[str, Any]]:
+        """Aggregated liv1->liv2->liv3 sums for one kind/year/measure (treemap)."""
+        return self._rows(
+            """SELECT liv1_code, liv1_name, liv2_code, liv2_name,
+                      liv3_code, liv3_name, sum(value) AS value
+               FROM rendiconto_capitoli
+               WHERE kind = ? AND year = ? AND measure = ?
+               GROUP BY liv1_code, liv1_name, liv2_code, liv2_name, liv3_code, liv3_name""",
+            [kind, year, measure],
+        )
+
+    def capitoli_liv1(self, *, kind: str, year: int) -> list[dict[str, Any]]:
+        """Distinct top-level voci (missione/titolo) for the drill-down selector."""
+        return self._rows(
+            """SELECT DISTINCT liv1_code, liv1_name FROM rendiconto_capitoli
+               WHERE kind = ? AND year = ? ORDER BY liv1_code""",
+            [kind, year],
+        )
+
+    def capitoli(
+        self, *, kind: str, year: int, measure: str,
+        liv1: str | None = None, liv2: str | None = None, limit: int = 5000,
+    ) -> list[dict[str, Any]]:
+        """Single capitoli (optionally within a missione/titolo and programma),
+        ranked by value, each with its hierarchy and source page."""
+        where = ["kind = ?", "year = ?", "measure = ?"]
+        params: list[Any] = [kind, year, measure]
+        if liv1 is not None:
+            where.append("liv1_code = ?")
+            params.append(liv1)
+        if liv2 is not None:
+            where.append("liv2_code = ?")
+            params.append(liv2)
+        params.append(limit)
+        return self._rows(
+            f"""SELECT liv1_code, liv1_name, liv2_code, liv2_name, liv3_code, liv3_name,
+                       capitolo_code, denominazione, value, source_page, sezione
+                FROM rendiconto_capitoli
+                WHERE {' AND '.join(where)}
+                ORDER BY value DESC LIMIT ?""",
+            params,
+        )
+
+    def all_capitoli(self) -> list[dict[str, Any]]:
+        return self._rows(
+            """SELECT year, kind, sezione, liv1_code, liv1_name, liv2_code, liv2_name,
+                      liv3_code, liv3_name, capitolo_code, denominazione,
+                      measure, value, unit, source_page
+               FROM rendiconto_capitoli
+               ORDER BY year, kind, liv1_code, liv2_code, liv3_code, capitolo_code, measure"""
+        )

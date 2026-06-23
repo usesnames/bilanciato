@@ -22,6 +22,7 @@ from collections import defaultdict
 from src.normalization.debito import DebitoItem
 from src.normalization.note_tables import NoteItem
 from src.normalization.rendiconto import RendicontoItem
+from src.normalization.rendiconto_capitoli import CapitoloItem
 from src.normalization.statements import NormalizedRow
 
 
@@ -322,6 +323,58 @@ def validate_debito(items: list[DebitoItem]) -> list[Check]:
             (f"debito/abitanti == pro-capite verificato; {len(pc_bad)} scostamenti. "
              + ("; ".join(pc_bad) or "tutto coerente")),
         ),
+    ]
+
+
+def validate_capitoli(
+    items: list[CapitoloItem],
+    agg_totals: dict[tuple[str, str], Decimal],
+    agg_per_voce: dict[tuple[str, str, str], Decimal],
+) -> list[Check]:
+    """Cross-check the analytic capitoli against the per-missione/per-titolo
+    aggregates already in the ``rendiconto`` table.
+
+    Reconciled measures are the competenza and cassa ones (impegni/pagamenti for
+    spese, accertamenti/riscossioni for entrate): the capitoli sum to the missione
+    /titolo totals and to the grand total. *Previsioni* are intentionally NOT
+    reconciled -- the budget side carries non-capitolo items (disavanzo, fondo
+    pluriennale vincolato, utilizzo avanzo) that have no capitolo to attach to.
+
+    ``agg_totals`` maps ``(kind, measure) -> grand total``; ``agg_per_voce`` maps
+    ``(kind, liv1_code, measure) -> voce total``.
+    """
+    recon = {"spesa": ("impegni", "pagamenti_totali"),
+             "entrata": ("accertamenti", "riscossioni_totali")}
+    tol = Decimal("1.00")
+
+    total_sum: dict[tuple[str, str], Decimal] = defaultdict(lambda: Decimal(0))
+    voce_sum: dict[tuple[str, str, str], Decimal] = defaultdict(lambda: Decimal(0))
+    for it in items:
+        if it.measure in recon.get(it.kind, ()):
+            total_sum[(it.kind, it.measure)] += it.value
+            voce_sum[(it.kind, it.liv1_code, it.measure)] += it.value
+
+    grand_bad, voce_bad, checked_t, checked_v = [], [], 0, 0
+    for kind, measures in recon.items():
+        for measure in measures:
+            key = (kind, measure)
+            if key in agg_totals:
+                checked_t += 1
+                if abs(total_sum[key] - agg_totals[key]) > tol:
+                    grand_bad.append(f"{kind}/{measure}: Δ={total_sum[key] - agg_totals[key]}")
+    for (kind, liv1, measure), expected in agg_per_voce.items():
+        if measure in recon.get(kind, ()):
+            checked_v += 1
+            if abs(voce_sum[(kind, liv1, measure)] - expected) > tol:
+                voce_bad.append(f"{kind}/{liv1}/{measure}: Δ={voce_sum[(kind, liv1, measure)] - expected}")
+
+    return [
+        Check("capitoli_grand_totals", not grand_bad and checked_t > 0,
+              f"{checked_t} totali generali verificati, {len(grand_bad)} non quadrano. "
+              + ("; ".join(grand_bad) or "tutto coerente")),
+        Check("capitoli_per_voce", not voce_bad and checked_v > 0,
+              f"{checked_v} somme per missione/titolo verificate, {len(voce_bad)} non quadrano. "
+              + ("; ".join(voce_bad[:5]) or "tutto coerente")),
     ]
 
 

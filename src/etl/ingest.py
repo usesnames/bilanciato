@@ -51,8 +51,10 @@ from src.normalization.rendiconto import (
     normalize_entrate,
     normalize_spese_missioni,
 )
+from src.normalization.rendiconto_capitoli import CapitoloItem, normalize_capitoli
 from src.normalization.statements import NormalizedRow, normalize_section
 from src.utils.config import (
+    CAPITOLI_PROFILES,
     EXTRACTED,
     NORMALIZED,
     PROFILES,
@@ -153,6 +155,88 @@ def _save_rendiconto(doc_name: str, items: list[RendicontoItem]) -> None:
                         it.value if it.value is not None else "", it.page])
 
 
+def _save_capitoli(doc_name: str, items: list[CapitoloItem]) -> None:
+    """Persist long-format analytic capitoli to extracted/ and normalized/."""
+    (EXTRACTED / doc_name).mkdir(parents=True, exist_ok=True)
+    (EXTRACTED / doc_name / "capitoli.json").write_text(
+        json.dumps([asdict(it) for it in items], ensure_ascii=False, indent=2, default=str)
+    )
+    out = NORMALIZED / doc_name
+    out.mkdir(parents=True, exist_ok=True)
+    with (out / "capitoli.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["kind", "sezione", "liv1_code", "liv1_name", "liv2_code", "liv2_name",
+                    "liv3_code", "liv3_name", "capitolo_code", "denominazione",
+                    "measure", "value", "page"])
+        for it in items:
+            w.writerow([it.kind, it.sezione or "", it.liv1_code, it.liv1_name,
+                        it.liv2_code or "", it.liv2_name or "", it.liv3_code or "",
+                        it.liv3_name or "", it.capitolo_code, it.denominazione,
+                        it.measure, it.value if it.value is not None else "", it.page])
+
+
+def ingest_capitoli(pdf_path: Path) -> bool:
+    """Ingest an analytic *rendiconto per capitoli* PDF, cross-checking the
+    capitoli against the per-missione/per-titolo aggregates already loaded."""
+    doc_name = pdf_path.name
+    profile = CAPITOLI_PROFILES[doc_name]
+    print(f"==> {doc_name}")
+    checksum = _checksum(pdf_path)
+    print(f"    type={profile.document_type} year={profile.year} sha256={checksum[:12]}...")
+
+    con = connect()
+    init_schema(con)
+    existing = load.document_exists(con, checksum)
+    if existing is not None:
+        print(f"    already imported (document id={existing}) -- skipping")
+        con.close()
+        return False
+
+    with pdfplumber.open(pdf_path) as pdf:
+        page_count = len(pdf.pages)
+        pages = [(i + 1, pdf.pages[i].extract_text() or "") for i in range(page_count)]
+        items = normalize_capitoli(pages)
+
+    _save_capitoli(doc_name, items)
+    n_cap = len({(it.kind, it.capitolo_code) for it in items})
+    print(f"    extracted {len(items)} capitoli items ({n_cap} capitoli)")
+
+    # Build the aggregate reference from the summary rendiconto of the same year.
+    rows = con.execute(
+        "SELECT kind, level, code, measure, value FROM rendiconto WHERE year = ?",
+        [profile.year],
+    ).fetchall()
+    agg_totals = {(k, meas): v for k, lvl, code, meas, v in rows if lvl == "totale"}
+    agg_per_voce = {(k, code, meas): v for k, lvl, code, meas, v in rows if lvl == "voce"}
+
+    if agg_totals:
+        checks = validate.validate_capitoli(items, agg_totals, agg_per_voce)
+        report_path = validate.save_report(NORMALIZED / doc_name, checks)
+        for c in checks:
+            print(f"    [{'OK ' if c.passed else 'FAIL'}] {c.name}: {c.detail}")
+        if not all(c.passed for c in checks):
+            print(f"    validation FAILED -- see {report_path}; not loading into DuckDB")
+            con.close()
+            return False
+    else:
+        print(f"    ! no summary rendiconto for {profile.year} to cross-check against; "
+              "loading capitoli without reconciliation")
+
+    doc_id = load.insert_document(
+        con,
+        filename=doc_name,
+        checksum=checksum,
+        document_type=profile.document_type,
+        year=profile.year,
+        page_count=page_count,
+        upload_timestamp=datetime.now(timezone.utc),
+    )
+    n = load.insert_rendiconto_capitoli(con, doc_id, profile.year, items)
+    con.close()
+    print(f"    loaded document id={doc_id}: {n} capitoli rows")
+    return True
+
+
 def ingest_rendiconto(pdf_path: Path) -> bool:
     """Ingest a rendiconto della gestione (conto del bilancio summary tables)."""
     doc_name = pdf_path.name
@@ -209,6 +293,8 @@ def ingest_rendiconto(pdf_path: Path) -> bool:
 def ingest_pdf(pdf_path: Path) -> bool:
     """Run the full pipeline for one PDF. Returns True if newly imported."""
     doc_name = pdf_path.name
+    if doc_name in CAPITOLI_PROFILES:
+        return ingest_capitoli(pdf_path)
     if doc_name in RENDICONTO_PROFILES:
         return ingest_rendiconto(pdf_path)
     profile = PROFILES.get(doc_name)

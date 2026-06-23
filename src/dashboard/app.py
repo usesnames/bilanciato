@@ -19,6 +19,7 @@ import textwrap
 
 import pandas as pd
 import plotly.colors as pcolors
+import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -173,6 +174,26 @@ def rendiconto(*, kind: str, measure: str, year: int | None = None, level: str =
 @st.cache_data(ttl=300)
 def rendiconto_total(*, kind: str, measure: str, year: int):
     return get_repo().rendiconto_total(kind=kind, measure=measure, year=year)
+
+
+@st.cache_data(ttl=300)
+def capitoli_years():
+    return get_repo().capitoli_years()
+
+
+@st.cache_data(ttl=300)
+def capitoli_tree(*, kind: str, year: int, measure: str):
+    return get_repo().capitoli_tree(kind=kind, year=year, measure=measure)
+
+
+@st.cache_data(ttl=300)
+def capitoli_liv1(*, kind: str, year: int):
+    return get_repo().capitoli_liv1(kind=kind, year=year)
+
+
+@st.cache_data(ttl=300)
+def capitoli(*, kind: str, year: int, measure: str, liv1=None, liv2=None):
+    return get_repo().capitoli(kind=kind, year=year, measure=measure, liv1=liv1, liv2=liv2)
 
 
 @st.cache_data(ttl=300)
@@ -659,6 +680,75 @@ def _rendiconto_stacked(rows, measure_label: str, percent: bool, kind: str):
     st.plotly_chart(fig, use_container_width=True)
 
 
+def _render_capitoli_detail(kind: str, year: int, measure: str, measure_label: str):
+    """Optional, collapsed drill-down from a missione/titolo down to single
+    capitoli: a zoomable treemap to explode the macro-areas plus a filtered table
+    to reach the individual capitoli. Kept in an expander so the summary screens
+    stay uncluttered."""
+    with st.expander("🔍 Esplora il dettaglio per capitoli"):
+        root = "Spese" if kind == "spesa" else "Entrate"
+        lab1 = "Missione" if kind == "spesa" else "Titolo"
+        lab2 = "Programma" if kind == "spesa" else "Tipologia"
+        lab3 = "Macroaggregato" if kind == "spesa" else "Categoria"
+        st.caption(
+            f"Dettaglio analitico {year}: ogni macroarea esplosa fino al singolo "
+            f"capitolo di bilancio (misura: {measure_label.lower()}). Fonte: Conto di "
+            "Bilancio D.Lgs 118 analitico per capitoli. I capitoli sommano esattamente "
+            "agli aggregati per missione/titolo qui sopra.")
+        tree = capitoli_tree(kind=kind, year=year, measure=measure)
+        df = pd.DataFrame(tree)
+        if not df.empty:
+            df = df[df["value"].astype(float) > 0].copy()
+        if df.empty:
+            st.info("Nessun importo positivo da mostrare per questa misura.")
+            return
+        df[lab1] = df["liv1_code"].astype(str) + " · " + df["liv1_name"].astype(str)
+        df[lab2] = df["liv2_name"].fillna("—").astype(str)
+        df[lab3] = df["liv3_name"].fillna("—").astype(str)
+        df["val"] = [float(scale_eur(v)) for v in df["value"]]
+        fig = px.treemap(
+            df, path=[px.Constant(root), lab1, lab2, lab3], values="val",
+            color=lab1, color_discrete_sequence=_PALETTE)
+        fig.update_traces(
+            root_color="lightgrey",
+            hovertemplate="<b>%{label}</b><br>%{value:,.0f} " + eur_unit()
+            + "<br>%{percentRoot} del totale<extra></extra>")
+        fig.update_layout(height=540, margin=dict(t=36, b=10),
+                          title=f"{root} {year} · {measure_label} (clic per esplodere)")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # -- drill-down table for one missione/titolo (+ optional programma) ----
+        st.markdown(f"**Capitoli di una {lab1.lower()}**")
+        opts = {f"{r['liv1_code']} · {r['liv1_name']}": r["liv1_code"]
+                for r in capitoli_liv1(kind=kind, year=year)}
+        c1, c2 = st.columns(2)
+        pick1 = c1.selectbox(lab1, list(opts), key="cap_liv1")
+        l1code = opts[pick1]
+        sub = sorted({(r["liv2_code"], r["liv2_name"]) for r in tree
+                      if r["liv1_code"] == l1code and r["liv2_code"]},
+                     key=lambda x: x[0] or "")
+        sub_opts = {"Tutti": None} | {f"{c} · {n}": c for c, n in sub}
+        pick2 = c2.selectbox(lab2, list(sub_opts), key="cap_liv2")
+        rows = capitoli(kind=kind, year=year, measure=measure,
+                        liv1=l1code, liv2=sub_opts[pick2])
+        if not rows:
+            st.info("Nessun capitolo per questa selezione.")
+            return
+        d = pd.DataFrame(rows)
+        d["importo"] = d["value"].map(fmt_eur)
+        view = d[["capitolo_code", "denominazione", "liv2_name", "liv3_name",
+                  "importo", "source_page"]].rename(columns={
+            "capitolo_code": "cod.", "denominazione": "capitolo",
+            "liv2_name": lab2.lower(), "liv3_name": lab3.lower(),
+            "source_page": "pag."})
+        st.caption(f"{len(d)} capitoli · {measure_label.lower()} {year}")
+        st.dataframe(view, use_container_width=True, hide_index=True, height=420)
+        st.download_button(
+            "Scarica capitoli (CSV)", d.to_csv(index=False).encode("utf-8"),
+            file_name=f"capitoli_{kind}_{measure}_{year}.csv", mime="text/csv",
+            key="dl_capitoli")
+
+
 def page_rendiconto():
     st.header("Rendiconto della gestione")
     if not rendiconto_years():
@@ -742,6 +832,11 @@ def page_rendiconto():
         st.download_button(
             "Scarica CSV", pd.DataFrame(rows).to_csv(index=False).encode("utf-8"),
             file_name=f"rendiconto_{kind}_{measure}.csv", mime="text/csv")
+
+    # -- optional analytic drill-down to single capitoli -----------------------
+    core = {"previsioni", "impegni", "pagamenti_totali", "accertamenti", "riscossioni_totali"}
+    if year in capitoli_years() and measure in core:
+        _render_capitoli_detail(kind, year, measure, measures[measure])
 
 
 def _fmt_plain(v, dec: int = 0) -> str:

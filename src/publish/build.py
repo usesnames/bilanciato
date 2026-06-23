@@ -144,6 +144,7 @@ def build_data_files(repo: Repository, data_dir: Path) -> dict[str, int]:
     notes = repo.all_note_items()
     rendiconto = repo.all_rendiconto()
     debito = repo.all_debito()
+    capitoli = repo.all_capitoli()  # analytic per-capitolo detail (large: CSV only)
 
     # Multi-year series for the headline totals (one authoritative value per year).
     timeseries = {}
@@ -166,21 +167,24 @@ def build_data_files(repo: Repository, data_dir: Path) -> dict[str, int]:
     _write_csv(data_dir / "note_items.csv", notes)
     _write_csv(data_dir / "rendiconto.csv", rendiconto)
     _write_csv(data_dir / "debito.csv", debito)
+    # The analytic per-capitolo detail is large (tens of thousands of rows): CSV only.
+    _write_csv(data_dir / "capitoli.csv", capitoli)
 
     # A small index so a fetch of data/ is self-describing.
     _write_json(data_dir / "index.json", {
         "documents": len(docs), "metrics": len(metrics), "entities": len(entities),
         "entity_metrics": len(entity_metrics), "note_items": len(notes),
-        "rendiconto": len(rendiconto), "debito": len(debito),
+        "rendiconto": len(rendiconto), "debito": len(debito), "capitoli": len(capitoli),
         "files": ["documents.json", "metrics.json", "entities.json",
                   "entity_metrics.json", "note_items.json", "rendiconto.json",
                   "debito.json", "timeseries.json", "metrics.csv", "entities.csv",
                   "entity_metrics.csv", "note_items.csv", "rendiconto.csv",
-                  "debito.csv"],
+                  "debito.csv", "capitoli.csv"],
     })
     return {"documents": len(docs), "metrics": len(metrics), "entities": len(entities),
             "entity_metrics": len(entity_metrics), "note_items": len(notes),
-            "rendiconto": len(rendiconto), "debito": len(debito)}
+            "rendiconto": len(rendiconto), "debito": len(debito),
+            "capitoli": len(capitoli)}
 
 
 def build_year_page(repo: Repository, out: Path, year: int, filename: str) -> None:
@@ -292,6 +296,10 @@ def build_llms_txt(repo: Repository, out: Path, doc_years: list[tuple[int, str]]
               "2018-2025 (residuo debito, nuovi prestiti, rimborsi, debito a fine anno, "
               "oneri finanziari/interessi, abitanti, debito per abitante); fonte: Relazioni "
               "del Collegio dei revisori dei conti.",
+              "- [capitoli.csv](data/capitoli.csv): rendiconto analitico per capitoli "
+              "(Conto di Bilancio D.Lgs 118 analitico) -- ogni capitolo di spesa/entrata con "
+              "missione/programma/macroaggregato (o titolo/tipologia/categoria), previsioni, "
+              "competenza, cassa e residui. I capitoli sommano agli aggregati per missione/titolo.",
               "- versioni CSV degli stessi file in [data/](data/)",
               "",
               "## Note",

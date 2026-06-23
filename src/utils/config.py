@@ -180,3 +180,21 @@ RENDICONTO_PROFILES: dict[str, RendicontoProfile] = {
     "All. n. 1 Rendiconto 2025.pdf": RendicontoProfile(
         "rendiconto_gestione", 2025, (10, 11), (44, 47)),
 }
+
+
+@dataclass(frozen=True)
+class CapitoliProfile:
+    """Layout of an analytic *rendiconto per capitoli* PDF (Conto di Bilancio
+    D.Lgs 118 analitico). The parser is heading-driven and detects the
+    spese/entrate side per page, so only the reporting year is needed.
+    """
+
+    document_type: str
+    year: int
+
+
+# Analytic per-capitolo rendiconti, keyed by filename. Add a line per year as the
+# corresponding "RENDICONTO_<year>_PER_CAPITOLI.pdf" becomes available.
+CAPITOLI_PROFILES: dict[str, CapitoliProfile] = {
+    "RENDICONTO_2023_PER_CAPITOLI.pdf": CapitoliProfile("rendiconto_capitoli", 2023),
+}
