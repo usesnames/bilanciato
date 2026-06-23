@@ -197,4 +197,6 @@ class CapitoliProfile:
 # corresponding "RENDICONTO_<year>_PER_CAPITOLI.pdf" becomes available.
 CAPITOLI_PROFILES: dict[str, CapitoliProfile] = {
     "RENDICONTO_2023_PER_CAPITOLI.pdf": CapitoliProfile("rendiconto_capitoli", 2023),
+    "Rendiconto_2024_per_capitoli.pdf": CapitoliProfile("rendiconto_capitoli", 2024),
+    "Rendiconto_2025_per_capitoli.pdf": CapitoliProfile("rendiconto_capitoli", 2025),
 }
