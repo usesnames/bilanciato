@@ -117,8 +117,8 @@ def test_confronto_comuni_includes_torino_matching_rendiconto():
         assert "TORINO" in cities
         for kind, measure in (("spesa", "pagamenti_totali"), ("entrata", "riscossioni_totali")):
             conf = {int(r["year"]): float(r["value"])
-                    for r in repo.confronto_totals(kind=kind, measure=measure)
-                    if r["comune"] == "TORINO"}
+                    for r in repo.confronto_rendiconto(
+                        comune="TORINO", kind=kind, measure=measure, level="totale")}
             for year, val in conf.items():
                 tot = repo.rendiconto_total(kind=kind, measure=measure, year=year)
                 assert tot is not None and abs(float(tot["value"]) - val) < 0.01, (

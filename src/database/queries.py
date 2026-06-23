@@ -302,18 +302,23 @@ class Repository:
                ORDER BY comune"""
         )
 
-    def confronto_years(self) -> list[int]:
-        rows = self._rows("SELECT DISTINCT year FROM rendiconto_comuni ORDER BY year")
-        return [int(r["year"]) for r in rows]
-
-    def confronto_totals(self, *, kind: str, measure: str) -> list[dict[str, Any]]:
-        """Grand total per (comune, year) for one kind/measure — the comparison series."""
+    def confronto_rendiconto(
+        self, *, comune: str, kind: str, measure: str, year: int | None = None,
+        level: str = "voce",
+    ) -> list[dict[str, Any]]:
+        """One comparison comune's rendiconto rows (per-voce by default) for a
+        kind/measure — same missione/titolo breakdown as the Torino ``rendiconto``."""
+        params: list[Any] = [comune, kind, measure, level]
+        yr = ""
+        if year is not None:
+            yr = "AND year = ?"
+            params.append(year)
         return self._rows(
-            """SELECT comune, region, year, value, source
-               FROM rendiconto_comuni
-               WHERE kind = ? AND measure = ? AND level = 'totale'
-               ORDER BY comune, year""",
-            [kind, measure],
+            f"""SELECT comune, region, year, kind, level, code, name, measure, value, source
+                FROM rendiconto_comuni
+                WHERE comune = ? AND kind = ? AND measure = ? AND level = ? {yr}
+                ORDER BY year, code""",
+            params,
         )
 
     def all_rendiconto_comuni(self) -> list[dict[str, Any]]:

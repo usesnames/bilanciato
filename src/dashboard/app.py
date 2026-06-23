@@ -182,8 +182,8 @@ def confronto_cities():
 
 
 @st.cache_data(ttl=300)
-def confronto_totals(*, kind: str, measure: str):
-    return get_repo().confronto_totals(kind=kind, measure=measure)
+def confronto_rendiconto(*, comune: str, kind: str, measure: str):
+    return get_repo().confronto_rendiconto(comune=comune, kind=kind, measure=measure)
 
 
 @st.cache_data(ttl=300)
@@ -908,6 +908,18 @@ def page_rendiconto():
              "(comportamento predefinito).",
         disabled=not exclude_codes)
 
+    # -- optional comparison with another comune (città metropolitane, BDAP) ---
+    city_opts = {c["comune"].title(): c["comune"]
+                 for c in confronto_cities() if c["comune"] != "TORINO"}
+    compare_labels = st.multiselect(
+        "Confronta con un altro comune",
+        sorted(city_opts),
+        help="Aggiunge all'istogramma del dettaglio annuale le barre di un'altra città "
+             "metropolitana, con la stessa suddivisione per missione/titolo (dati BDAP/RGS). "
+             "Con il confronto attivo, usa «In %» per leggere le quote a parità di scala.") \
+        if city_opts else []
+    compare_comuni = [city_opts[lbl] for lbl in compare_labels]
+
     # -- headline: incassi vs pagamenti for the latest year --------------------
     latest = max(yrs)
     inc = rendiconto_total(kind="entrata", measure="riscossioni_totali", year=latest)
@@ -940,18 +952,59 @@ def page_rendiconto():
         tot = (net_tot if net_base else gross_tot) or 1
         df["quota"] = [f"{r['value'] / tot * 100:.1f}%" for _, r in df.iterrows()]
         df["importo"] = df["value"].map(fmt_eur)
-        customdata = [[q, _hover_desc(kind, c)] for q, c in zip(df["quota"], df["code"])]
-        fig = go.Figure(go.Bar(
-            x=[scale_eur(v) for v in df["value"]], y=df["voce"], orientation="h",
-            text=df["quota"], textposition="auto",
-            marker_color=[_PALETTE[i % len(_PALETTE)] for i in range(len(df))],
-            customdata=customdata,
-            hovertemplate="<b>%{y}</b><br>%{x:,.0f} " + eur_unit()
-            + " — %{customdata[0]} del totale" + "%{customdata[1]}<extra></extra>"))
-        fig.update_layout(height=max(320, 26 * len(df)), xaxis_title=eur_unit(),
-                          yaxis=dict(autorange="reversed"), margin=dict(t=10, b=10),
-                          hoverlabel=dict(align="left"),
-                          title=f"{measures[measure]} — {year}")
+        if compare_comuni:
+            # Grouped bars: Torino + each selected comune, SAME missione/titolo breakdown.
+            order_codes = df["code"].astype(str).tolist()
+            label_by_code = {str(c): v for c, v in zip(df["code"], df["voce"])}
+            series = [("Torino", {str(c): float(v) for c, v in zip(df["code"], df["value"])})]
+            for cm in compare_comuni:
+                crows = confronto_rendiconto(comune=cm, kind=kind, measure=measure)
+                vb = {str(r["code"]): float(r["value"]) for r in crows
+                      if r["year"] == year and str(r["code"]) not in exclude_codes}
+                series.append((cm.title(), vb))
+                for code in vb:  # a missione/titolo Torino lacks: append it to the axis
+                    if code not in label_by_code:
+                        nm = next((r["name"] for r in crows if str(r["code"]) == code), code)
+                        label_by_code[code] = _rendiconto_label(code, nm)
+                        order_codes.append(code)
+            base_tot = {name: (sum(vb.values()) or 1) for name, vb in series}
+            y_labels = [label_by_code[c] for c in order_codes]
+            fig = go.Figure()
+            for idx, (name, vb) in enumerate(series):
+                shares = [f"{vb.get(c, 0) / base_tot[name] * 100:.1f}%" for c in order_codes]
+                xs = ([vb.get(c, 0) / base_tot[name] * 100 for c in order_codes] if percent
+                      else [scale_eur(vb.get(c, 0)) for c in order_codes])
+                fig.add_trace(go.Bar(
+                    y=y_labels, x=xs, orientation="h", name=name,
+                    marker_color=_PALETTE[idx % len(_PALETTE)],
+                    customdata=[[s] for s in shares],
+                    hovertemplate="<b>%{y}</b> · " + name
+                    + ("<br>%{x:.1f}% del totale" if percent
+                       else "<br>%{x:,.0f} " + eur_unit() + " — %{customdata[0]} del totale")
+                    + "<extra></extra>"))
+            fig.update_layout(
+                barmode="group", height=max(360, 34 * len(order_codes)),
+                xaxis_title=("% sul totale del comune" if percent else eur_unit()),
+                yaxis=dict(autorange="reversed"), margin=dict(t=10, b=10),
+                hoverlabel=dict(align="left"), legend=dict(orientation="h", y=-0.10),
+                title=f"{measures[measure]} — {year} · confronto "
+                      f"(Torino vs {', '.join(c.title() for c in compare_comuni)})")
+            if not percent:
+                st.caption("Suggerimento: attiva «In %» qui sopra per confrontare le "
+                           "quote a parità di scala (i totali dei comuni differiscono).")
+        else:
+            customdata = [[q, _hover_desc(kind, c)] for q, c in zip(df["quota"], df["code"])]
+            fig = go.Figure(go.Bar(
+                x=[scale_eur(v) for v in df["value"]], y=df["voce"], orientation="h",
+                text=df["quota"], textposition="auto",
+                marker_color=[_PALETTE[i % len(_PALETTE)] for i in range(len(df))],
+                customdata=customdata,
+                hovertemplate="<b>%{y}</b><br>%{x:,.0f} " + eur_unit()
+                + " — %{customdata[0]} del totale" + "%{customdata[1]}<extra></extra>"))
+            fig.update_layout(height=max(320, 26 * len(df)), xaxis_title=eur_unit(),
+                              yaxis=dict(autorange="reversed"), margin=dict(t=10, b=10),
+                              hoverlabel=dict(align="left"),
+                              title=f"{measures[measure]} — {year}")
         st.plotly_chart(fig, use_container_width=True)
         st.dataframe(
             df[["code", "name", "importo", "quota", "source_page"]].rename(
@@ -967,91 +1020,6 @@ def page_rendiconto():
     core = {"previsioni", "impegni", "pagamenti_totali", "accertamenti", "riscossioni_totali"}
     if capitoli_years() and measure in core:
         _render_capitoli_detail(kind, measure, measures[measure])
-
-
-def page_confronto():
-    st.header("Confronto città metropolitane")
-    cities = confronto_cities()
-    if not cities:
-        st.info(
-            "Nessun dato di confronto caricato. Scarica gli ZIP BDAP delle regioni "
-            "interessate in `uploads/bdap_rendiconto/` ed esegui "
-            "`python -m src.etl.load_bdap_comuni`."
-        )
-        return
-    st.info(
-        "**Confronto del rendiconto della gestione tra le città metropolitane** — "
-        "stessi dati (solo Comune, base finanziaria cassa/competenza) del rendiconto "
-        "di Torino, presi dalle **open data BDAP/RGS** (https://openbdap.rgs.mef.gov.it) "
-        "così da essere confrontabili tra comuni. Sono mostrate le città già caricate; "
-        "l'elenco cresce man mano che si scaricano le altre regioni."
-    )
-
-    c1, c2 = st.columns([1.4, 1.6])
-    side = c1.radio("Vista", ["Spese (pagamenti/impegni)", "Entrate (riscossioni/accertamenti)"],
-                    horizontal=False, key="conf_side")
-    kind = "spesa" if side.startswith("Spese") else "entrata"
-    measures = RENDICONTO_MEASURES[kind]
-    measure = c2.selectbox(
-        "Misura", list(measures), format_func=lambda m: measures[m],
-        # Default to actual cash (pagamenti / riscossioni), as on the Torino page.
-        index=list(measures).index("pagamenti_totali" if kind == "spesa" else "riscossioni_totali"),
-        key="conf_measure",
-        help="**Cassa** (pagamenti/riscossioni) = denaro effettivamente movimentato · "
-             "**Competenza** (impegni/accertamenti) = obbligazioni sorte nell'anno · "
-             "**Previsioni** = stanziamento definitivo.")
-
-    rows = confronto_totals(kind=kind, measure=measure)
-    if not rows:
-        st.info("Nessun valore per questa selezione.")
-        return
-    df = pd.DataFrame(rows)
-
-    # -- multi-year line: one series per city ---------------------------------
-    st.subheader(f"Andamento nel tempo · {measures[measure]}")
-    fig = go.Figure()
-    order = (df.groupby("comune")["value"].max().sort_values(ascending=False).index.tolist())
-    for idx, comune in enumerate(order):
-        d = df[df["comune"] == comune].sort_values("year")
-        fig.add_trace(go.Scatter(
-            x=d["year"], y=[scale_eur(v) for v in d["value"]], mode="lines+markers",
-            name=comune.title(), marker_color=_PALETTE[idx % len(_PALETTE)],
-            hovertemplate="<b>" + comune.title() + "</b><br>%{x}: %{y:,.0f} "
-            + eur_unit() + "<extra></extra>"))
-    fig.update_layout(height=460, yaxis_title=eur_unit(), xaxis=dict(dtick=1, title=""),
-                      margin=dict(t=20, b=10), legend=dict(orientation="h", y=-0.18),
-                      hoverlabel=dict(align="left"))
-    st.plotly_chart(fig, use_container_width=True)
-
-    # -- single-year ranking --------------------------------------------------
-    yrs = sorted({int(y) for y in df["year"]}, reverse=True)
-    st.subheader("Classifica per anno")
-    year = st.selectbox("Anno", yrs, key="conf_year")
-    yr = df[df["year"] == year].sort_values("value", ascending=False)
-    fig2 = go.Figure(go.Bar(
-        x=[scale_eur(v) for v in yr["value"]], y=[c.title() for c in yr["comune"]],
-        orientation="h", text=[fmt_eur(v) for v in yr["value"]], textposition="auto",
-        marker_color=[_PALETTE[i % len(_PALETTE)] for i in range(len(yr))],
-        hovertemplate="<b>%{y}</b><br>%{x:,.0f} " + eur_unit() + "<extra></extra>"))
-    fig2.update_layout(height=max(280, 40 * len(yr)), xaxis_title=eur_unit(),
-                       yaxis=dict(autorange="reversed"), margin=dict(t=10, b=10),
-                       title=f"{measures[measure]} — {year}")
-    st.plotly_chart(fig2, use_container_width=True)
-
-    # -- coverage + download ---------------------------------------------------
-    cov = pd.DataFrame(cities)
-    cov["città"] = cov["comune"].str.title()
-    cov = cov[["città", "region", "first_year", "last_year", "n_years"]].rename(columns={
-        "region": "regione", "first_year": "dal", "last_year": "al", "n_years": "anni"})
-    n_tot = 14
-    st.caption(f"Città metropolitane caricate: **{len(cities)}/{n_tot}**. "
-               "Le altre compaiono qui dopo aver scaricato gli ZIP BDAP della loro regione.")
-    with st.expander("Copertura e fonte dei dati"):
-        st.dataframe(cov, use_container_width=True, hide_index=True)
-        st.caption(f"Fonte: {df['source'].iloc[0]} (e analoghi per anno/città).")
-    st.download_button(
-        "Scarica CSV", df.to_csv(index=False).encode("utf-8"),
-        file_name=f"confronto_{kind}_{measure}.csv", mime="text/csv")
 
 
 def _fmt_plain(v, dec: int = 0) -> str:
@@ -1249,7 +1217,6 @@ PAGES = {
     "Confronto tra anni": page_comparison,
     "Esplora le partecipate": page_entities,
     "Rendiconto della gestione": page_rendiconto,
-    "Confronto città metropolitane": page_confronto,
     "Debito del Comune": page_debito,
     "Dati aperti / per LLM": page_open_data,
 }
