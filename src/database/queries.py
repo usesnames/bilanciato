@@ -453,6 +453,52 @@ class Repository:
             params,
         )
 
+    def capitoli_timeseries(
+        self, *, kind: str, measure: str, capitolo_code: str | None = None,
+        liv1: str | None = None, liv2: str | None = None, liv3: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """One value per year for a single capitolo or an aggregated level
+        (filter by capitolo_code, or by liv1/liv2/liv3), for one measure."""
+        where = ["kind = ?", "measure = ?"]
+        params: list[Any] = [kind, measure]
+        for col, val in (("capitolo_code", capitolo_code), ("liv1_code", liv1),
+                         ("liv2_code", liv2), ("liv3_code", liv3)):
+            if val is not None:
+                where.append(f"{col} = ?")
+                params.append(val)
+        return self._rows(
+            f"""SELECT year, sum(value) AS value, max(denominazione) AS denominazione
+                FROM rendiconto_capitoli WHERE {' AND '.join(where)}
+                GROUP BY year ORDER BY year""",
+            params,
+        )
+
+    def capitoli_distinct(
+        self, *, kind: str, liv1: str, liv2: str | None = None, level: str = "capitolo",
+    ) -> list[dict[str, Any]]:
+        """Distinct items (across all years) for the trend selector, within a
+        missione/titolo (optionally a programma/tipologia). ``level`` is
+        'capitolo' or 'liv3' (macroaggregato/categoria)."""
+        where = ["kind = ?", "liv1_code = ?"]
+        params: list[Any] = [kind, liv1]
+        if liv2 is not None:
+            where.append("liv2_code = ?")
+            params.append(liv2)
+        if level == "liv3":
+            return self._rows(
+                f"""SELECT liv3_code AS code, max(liv3_name) AS name
+                    FROM rendiconto_capitoli
+                    WHERE {' AND '.join(where)} AND liv3_code IS NOT NULL
+                    GROUP BY liv3_code ORDER BY max(liv3_name)""",
+                params,
+            )
+        return self._rows(
+            f"""SELECT capitolo_code AS code, max(denominazione) AS name
+                FROM rendiconto_capitoli WHERE {' AND '.join(where)}
+                GROUP BY capitolo_code ORDER BY max(denominazione)""",
+            params,
+        )
+
     def all_capitoli(self) -> list[dict[str, Any]]:
         return self._rows(
             """SELECT year, kind, sezione, liv1_code, liv1_name, liv2_code, liv2_name,

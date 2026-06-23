@@ -198,6 +198,19 @@ def capitoli(*, kind: str, year: int, measure: str, liv1=None, liv2=None, limit:
 
 
 @st.cache_data(ttl=300)
+def capitoli_timeseries(*, kind: str, measure: str, capitolo_code=None,
+                        liv1=None, liv2=None, liv3=None):
+    return get_repo().capitoli_timeseries(
+        kind=kind, measure=measure, capitolo_code=capitolo_code,
+        liv1=liv1, liv2=liv2, liv3=liv3)
+
+
+@st.cache_data(ttl=300)
+def capitoli_distinct(*, kind: str, liv1: str, liv2=None, level: str = "capitolo"):
+    return get_repo().capitoli_distinct(kind=kind, liv1=liv1, liv2=liv2, level=level)
+
+
+@st.cache_data(ttl=300)
 def debito(measure: str | None = None):
     return get_repo().debito(measure=measure)
 
@@ -764,6 +777,56 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             "Scarica capitoli (CSV)", d.to_csv(index=False).encode("utf-8"),
             file_name=f"capitoli_{kind}_{measure}_{year}.csv", mime="text/csv",
             key="dl_capitoli")
+
+        # -- multi-year variation of a single capitolo / macroaggregato --------
+        if len(cap_years) > 1:
+            st.markdown("**Variazione negli anni**")
+            st.caption(
+                f"Andamento di {measure_label.lower()} sugli anni disponibili "
+                f"({min(cap_years)}-{max(cap_years)}), entro la "
+                f"{lab1.lower()} (ed eventuale {lab2.lower()}) selezionata sopra.")
+            gran = st.radio(
+                "Vedi l'andamento di:", ["Singolo capitolo", f"{lab3} (aggregato)"],
+                horizontal=True, key="cap_trend_gran")
+            level = "capitolo" if gran.startswith("Singolo") else "liv3"
+            liv2_filter = sub_opts[pick2]
+            items = capitoli_distinct(kind=kind, liv1=l1code, liv2=liv2_filter, level=level)
+            if not items:
+                st.info("Nessuna voce disponibile per questa selezione.")
+                return
+            choice = st.selectbox(
+                "Voce", items, format_func=lambda it: f"{it['code']} · {it['name']}",
+                key="cap_trend_item")
+            if level == "capitolo":
+                ts = capitoli_timeseries(kind=kind, measure=measure,
+                                         capitolo_code=choice["code"])
+            else:
+                ts = capitoli_timeseries(kind=kind, measure=measure, liv1=l1code,
+                                         liv2=liv2_filter, liv3=choice["code"])
+            pts = [t for t in ts if t["value"] is not None]
+            if not pts:
+                st.info("Nessun importo per questa voce.")
+                return
+            tdf = pd.DataFrame(pts).sort_values("year")
+            fig2 = go.Figure(go.Bar(
+                x=tdf["year"], y=[scale_eur(v) for v in tdf["value"]],
+                text=[fmt_eur(v) for v in tdf["value"]], textposition="outside",
+                marker_color=_PALETTE[0],
+                hovertemplate="<b>%{x}</b><br>%{y:,.0f} " + eur_unit() + "<extra></extra>"))
+            fig2.update_layout(height=340, yaxis_title=eur_unit(), xaxis=dict(dtick=1),
+                               margin=dict(t=34, b=10),
+                               title=f"{choice['name'][:70]} — {measure_label}")
+            st.plotly_chart(fig2, use_container_width=True)
+            if len(tdf) > 1:
+                first, last = tdf.iloc[0], tdf.iloc[-1]
+                delta = last["value"] - first["value"]
+                pct = (delta / first["value"] * 100) if first["value"] else 0
+                st.metric(f"Variazione {int(first['year'])} → {int(last['year'])}",
+                          fmt_eur(delta), f"{pct:+.1f}%")
+            missing = [y for y in cap_years if y not in set(int(v) for v in tdf["year"])]
+            if missing:
+                st.caption("Nessun importo registrato per: "
+                           + ", ".join(str(y) for y in missing) + ".")
 
 
 def page_rendiconto():
