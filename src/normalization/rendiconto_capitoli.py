@@ -59,9 +59,48 @@ _ENTRATA_MAP = {
 _HEADING_RE = re.compile(
     r"^(TITOLO|MISSIONE|PROGRAMMA|MACROAGGREGATO|TIPOLOGIA|CATEGORIA)\s+(\d+)\s*:\s*(.*)$"
 )
-# A capitolo line: 3-4 small leading integers then a 12-digit code, then the
-# denominazione (which may be glued to the code on the spese side).
-_CAPITOLO_RE = re.compile(r"^\s*(?:\d{1,3}\s+){2,4}(\d{12})\s*(.*)$")
+# A capitolo line: 3-4 small leading integers then the capitolo code, then the
+# denominazione (which may be glued to the code on the spese side). Real capitoli
+# carry a 12-digit code. The FPV (fondo pluriennale vincolato) rows use a 9-digit
+# placeholder code (e.g. "2 10 5 5 972510205 FPV - ..."); we still match them here
+# so they act as a block boundary -- otherwise they glue onto the previous
+# capitolo's denominazione -- but we do NOT record them (see normalize_capitoli):
+# their codes are non-unique (the same 9-digit code is reused across missioni) and
+# they carry I=0/TP=0, so dropping them leaves the impegni/pagamenti reconciliation
+# untouched while keeping the capitolo namespace clean (unique 12-digit codes).
+_CAPITOLO_RE = re.compile(r"^\s*(?:\d{1,3}\s+){2,4}(\d{9,12})\s*(.*)$")
+
+# Page header/footer boilerplate. Each page repeats a fixed 10-line column-header
+# band (top) plus a "Data di stampa ... Pagina N di M" footer. When a capitolo
+# block straddles a page break these lines would otherwise be swallowed into the
+# denominazione, so they are dropped. All markers are value-free header text; the
+# reversed tokens (RGGAORCAM=MACROAGGR., OLOTIT=TITOLO, ENOISSIM=MISSIONE,
+# AMMARGORP=PROGRAMMA, AIGOLOPIT=TIPOLOGIA, AIROGETAC=CATEGORIA) come from
+# pdfplumber reading the rotated column labels. Matched on both spese and entrate
+# layouts. Distinct from real "TOTALE MISSIONE/TITOLO/GENERALE" subtotal lines.
+_BOILERPLATE_RE = re.compile(
+    r"^("
+    r"COMUNE DI TORINO"
+    r"|Data di stampa"
+    r"|\.?RGGAORCAM|OLOTIT|ENOISSIM|AMMARGORP|AIGOLOPIT|AIROGETAC"
+    r"|CODICE$|CODICE PREVISIONI"
+    r"|CAPITOLO$"
+    r"|DENOMINAZIONE\b"
+    r"|PREVISIONI DEFINITIVE DI"
+    r"|CASSA \(CS\)"
+    r"|RESIDUI (ATTIVI|PASSIVI) (AL|DA)"
+    r"|\(RS\) PREC\."
+    r"|RIPORT\. \(TR"
+    r"|TOTALE RESIDUI (ATTIVI|PASSIVI) DA"
+    r")"
+)
+
+
+def _is_boilerplate(line: str) -> bool:
+    """A repeated page header/footer line (never carries a monetary value)."""
+    if _LAB_RE.search(line):  # any "LABEL value" token => real data, keep it
+        return False
+    return bool(_BOILERPLATE_RE.match(line))
 
 
 @dataclass
@@ -165,6 +204,8 @@ def normalize_capitoli(pages: list[tuple[int, str]]) -> list[CapitoloItem]:
             line = raw_line.strip()
             if not line:
                 continue
+            if _is_boilerplate(line):
+                continue  # repeated page header/footer: drop, keep the block open
             heading = _HEADING_RE.match(line)
             if heading:
                 flush()
@@ -176,7 +217,12 @@ def normalize_capitoli(pages: list[tuple[int, str]]) -> list[CapitoloItem]:
             cap = _CAPITOLO_RE.match(line)
             if cap and "liv1_code" in ctx:
                 flush()
-                cur_code = cap.group(1)
+                code = cap.group(1)
+                if len(code) < 12:
+                    # FPV placeholder row: boundary only -- close the previous
+                    # capitolo cleanly, but don't open a block for it.
+                    continue
+                cur_code = code
                 cur_page = page_no
                 buf = [cap.group(2)]
                 continue

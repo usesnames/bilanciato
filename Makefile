@@ -1,4 +1,4 @@
-.PHONY: install ingest load-debito dashboard publish serve-site test lint format clean
+.PHONY: install ingest load-debito load-rendiconto-csv dashboard publish serve-site test lint format clean
 
 PY := .venv/bin/python
 PIP := .venv/bin/pip
@@ -11,6 +11,9 @@ ingest:  ## run the ETL over every profiled PDF in uploads/
 
 load-debito:  ## load the curated municipal-debt series (Collegio dei revisori) into DuckDB
 	$(PY) -m src.etl.load_debito
+
+load-rendiconto-csv:  ## load a rendiconto from the Formato aperto CSVs (2019, PDF unusable)
+	$(PY) -m src.etl.load_rendiconto_csv
 
 dashboard:  ## start the Streamlit dashboard on :8501 (reads DuckDB directly)
 	PYTHONPATH=. .venv/bin/streamlit run src/dashboard/app.py

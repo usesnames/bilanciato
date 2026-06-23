@@ -81,6 +81,50 @@ def test_spese_core_measure_values():
     assert m[("002900000001", "fpv")] == Decimal("1174634.42")
 
 
+# A capitolo whose block straddles a page break: the repeated footer + header band
+# of the next page falls inside the block, plus an FPV (9-digit) row follows.
+_PAGEBREAK = """\
+COMUNE DI TORINO Conto di Bilancio D.Lgs 118 analitico (Multilingua) - spese per Titoli - SPESE (anno 2023)
+TITOLO 2: Spese in conto capitale
+MISSIONE 10: Trasporti e diritto alla mobilità
+PROGRAMMA 5: Viabilità e infrastrutture stradali
+MACROAGGREGATO 5: Altre spese in conto capitale
+2 10 5 5 074100001001NETTEZZA URBANA - ALTRE SPESE - settore 064 RS 0,00 PR 0,00 R 0,00 EP 0,00
+CP 1.000,00 PC 0,00 I 1.000,00 ECP 0,00 EC 0,00
+Data di stampa: 06/03/2025 Pagina 318 di540
+COMUNE DI TORINO Conto di Bilancio D.Lgs 118 analitico (Multilingua) - spese per Titoli - SPESE (anno 2023)
+.RGGAORCAM
+CODICE
+CAPITOLO
+OLOTIT ENOISSIM
+AMMARGORP RESIDUI PASSIVI AL 1/1/2023 PAGAMENTI IN C/RESIDUI (PR)RIACCERTAMENTI RESIDUI (R) RESIDUI PASSIVI DA ESERC.
+(RS) PREC. (EP=RS-PR+R+P)
+DENOMINAZIONE PREVISIONI DEFINITIVE DI PAGAMENTI IN IMPEGNI (I) ECONOMIE DI COMPETENZA
+PREVISIONI DEFINITIVE DI TOTALE PAGAMENTI FONDO PLURIENNALE TOTALE RESIDUI PASSIVI DA
+CASSA (CS) (TP=PR+PC) VINCOLATO (FPV) RIPORT. (TR=EP+EC)
+CS 1.000,00 TP 0,00 FPV 0,00 TR 0,00
+2 10 5 5 972510205 FPV - TRASPORTI - REALIZZAZIONE LINEA 2 METRO RS 0,00 PR 0,00 R 0,00 EP 0,00
+CP 45.278.923,02 PC 0,00 I 0,00 ECP 45.278.923,02 EC 0,00
+CS 0,00 TP 0,00 FPV 0,00 TR 0,00
+"""
+
+
+def test_pagebreak_boilerplate_and_fpv():
+    items = normalize_capitoli([(1, _PAGEBREAK)])
+    caps = {it.capitolo_code for it in items}
+    # the 9-digit FPV placeholder row is NOT recorded as a capitolo
+    assert caps == {"074100001001"}
+    cap = next(it for it in items if it.measure == "impegni")
+    # denominazione must be clean: no footer/header boilerplate, no FPV row glued in
+    assert cap.denominazione == "NETTEZZA URBANA - ALTRE SPESE - settore 064"
+    for junk in ("COMUNE DI TORINO", "Data di stampa", "DENOMINAZIONE", "RGGAORCAM", "FPV - TRASPORTI"):
+        assert junk not in cap.denominazione
+    # values survive the page break (the CS/TP line on the next page is captured)
+    m = _by_measure(items)
+    assert m[("074100001001", "impegni")] == Decimal("1000.00")
+    assert m[("074100001001", "pagamenti_totali")] == Decimal("0.00")
+
+
 def test_entrate_label_collisions_disambiguated():
     m = _by_measure(normalize_capitoli([(1, _ENTRATE)]))
     code = "000100000001"
