@@ -738,11 +738,13 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             color=lab1, color_discrete_sequence=_PALETTE, maxdepth=4)
         fig.update_traces(
             root_color="lightgrey",
-            textfont_size=15,
+            textfont_size=17,
             hovertemplate="<b>%{label}</b><br>%{value:,.0f} " + eur_unit()
             + "<br>%{percentRoot} del totale<extra></extra>")
+        # Fixed font (no uniformtext) => plotly keeps every label at 17px and shows
+        # only the part that fits the tile, clipping the rest at the box edge (the
+        # full name is always available on hover). Nothing is hidden.
         fig.update_layout(height=560, margin=dict(t=36, b=10),
-                          uniformtext=dict(minsize=12, mode="hide"),
                           title=f"{root} {year} · {measure_label} — clic per esplodere fino al capitolo")
         st.plotly_chart(fig, use_container_width=True)
         st.caption(
