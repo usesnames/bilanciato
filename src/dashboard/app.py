@@ -655,18 +655,29 @@ def _hover_desc(kind: str, code) -> str:
     return f"<br><span style='font-size:11px'>{wrapped}</span>"
 
 
-def _rendiconto_stacked(rows, measure_label: str, percent: bool, kind: str):
+def _rendiconto_stacked(rows, measure_label: str, percent: bool, kind: str,
+                        exclude_codes=(), net_base: bool = False):
     """Stacked bar chart: x = year, one stacked series per voce (missione/titolo).
 
     Each segment's hover shows the amount, its share of that year's total, and a
-    plain-language description of the missione/titolo.
+    plain-language description of the missione/titolo. ``exclude_codes`` are dropped
+    from the chart; the share %% is computed on the total NET of those voci when
+    ``net_base`` is set, otherwise on the full (gross) total -- so the user can read
+    each voce against the budget with or without e.g. partite di giro.
     """
     df = pd.DataFrame(rows)
     if df.empty:
         st.info("Nessun dato disponibile.")
         return
     df["voce"] = [_rendiconto_label(c, n) for c, n in zip(df["code"], df["name"])]
-    year_total = df.groupby("year")["value"].sum().to_dict()
+    exclude_codes = {str(c) for c in exclude_codes}
+    kept = df[~df["code"].astype(str).isin(exclude_codes)]
+    # % base: net of the excluded voci, or the full total (current default).
+    year_total = (kept if net_base else df).groupby("year")["value"].sum().to_dict()
+    df = kept
+    if df.empty:
+        st.info("Tutte le voci sono escluse.")
+        return
     fig = go.Figure()
     # Order series by their most recent value so the legend/stack reads largest-first.
     last_year = df["year"].max()
@@ -866,6 +877,25 @@ def page_rendiconto():
         for m, lbl in measures.items():
             st.markdown(f"- **{lbl}** — {helps[m]}")
 
+    # -- optional exclusion of voci + percentage base --------------------------
+    rows = rendiconto(kind=kind, measure=measure)
+    voce_opts: dict[str, str] = {}
+    for r in rows:
+        voce_opts.setdefault(_rendiconto_label(r["code"], r["name"]), str(r["code"]))
+    exclude_labels = st.multiselect(
+        "Escludi voci dai grafici",
+        sorted(voce_opts),
+        help="Le voci selezionate spariscono dai grafici sottostanti. Utile per "
+             "togliere partite di giro e anticipazioni di tesoreria, che gonfiano i "
+             "totali senza essere vere entrate/spese.")
+    exclude_codes = {voce_opts[lbl] for lbl in exclude_labels}
+    net_base = st.toggle(
+        "Percentuali sul totale al netto delle voci escluse",
+        help="Se attivo, la quota %% di ogni voce è calcolata sul totale ESCLUSE le "
+             "voci tolte sopra. Se disattivo, è calcolata sul totale che le comprende "
+             "(comportamento predefinito).",
+        disabled=not exclude_codes)
+
     # -- headline: incassi vs pagamenti for the latest year --------------------
     latest = max(yrs)
     inc = rendiconto_total(kind="entrata", measure="riscossioni_totali", year=latest)
@@ -883,17 +913,19 @@ def page_rendiconto():
 
     # -- multi-year stacked composition ----------------------------------------
     st.subheader(f"Composizione nel tempo · {measures[measure]}")
-    rows = rendiconto(kind=kind, measure=measure)
-    _rendiconto_stacked(rows, measures[measure], percent, kind)
+    _rendiconto_stacked(rows, measures[measure], percent, kind, exclude_codes, net_base)
 
     # -- single-year ranked breakdown ------------------------------------------
     st.subheader("Dettaglio di un anno")
     year = st.selectbox("Anno", sorted(yrs, reverse=True))
-    yr_rows = [r for r in rows if r["year"] == year]
+    yr_rows = [r for r in rows if r["year"] == year and str(r["code"]) not in exclude_codes]
     if yr_rows:
         df = pd.DataFrame(yr_rows).sort_values("value", ascending=False)
         df["voce"] = [_rendiconto_label(c, n) for c, n in zip(df["code"], df["name"])]
-        tot = sum(r["value"] for r in yr_rows) or 1
+        # % base: net of the excluded voci, or the full year total (default).
+        net_tot = sum(r["value"] for r in yr_rows)
+        gross_tot = sum(r["value"] for r in rows if r["year"] == year)
+        tot = (net_tot if net_base else gross_tot) or 1
         df["quota"] = [f"{r['value'] / tot * 100:.1f}%" for _, r in df.iterrows()]
         df["importo"] = df["value"].map(fmt_eur)
         customdata = [[q, _hover_desc(kind, c)] for q, c in zip(df["quota"], df["code"])]
