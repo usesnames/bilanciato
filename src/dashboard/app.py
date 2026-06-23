@@ -1121,6 +1121,17 @@ def page_debito():
         st.caption(
             "Quando i rimborsi superano i nuovi prestiti, il debito complessivo "
             "diminuisce. La quota capitale rimborsata coincide con i rimborsi qui sopra.")
+        st.info(
+            "**Perché i rimborsi qui sono più bassi della Missione 50 del rendiconto?** "
+            "Questi rimborsi sono la quota capitale di **mutui e prestiti obbligazionari** "
+            "effettivamente pagata nell'anno (cassa). Nel rendiconto per capitoli la "
+            "Missione 50 «Quota capitale ammortamento mutui e prestiti obbligazionari» "
+            "risulta più alta (~20 mln/anno) perché include anche il **rimborso delle "
+            "anticipazioni di liquidità** (D.L. 35/2013 e D.L. 34/2020), che per legge "
+            "non sono indebitamento (art. 204 TUEL: finanziano il pagamento di debiti "
+            "pregressi, non investimenti) e quindi sono esclusi qui. Identità verificata: "
+            "rimborsi = pagamenti della Missione 50 P02 − rimborso anticipazioni di "
+            "liquidità (al centesimo, 2023-2025).")
 
     # -- interest and total debt service --------------------------------------
     st.subheader("Oneri finanziari e servizio del debito")
