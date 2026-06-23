@@ -63,6 +63,13 @@ class Repository:
         rows = self._rows(sql, params)
         return rows[0] if rows else None
 
+    def _has_table(self, name: str) -> bool:
+        """Whether a table exists. Lets newer code degrade gracefully against an
+        older database (e.g. a deployed DB that lags the deployed code)."""
+        return self._one(
+            "SELECT 1 AS x FROM information_schema.tables WHERE table_name = ?", [name]
+        ) is not None
+
     # -- documents ----------------------------------------------------------
     def documents(self) -> list[dict[str, Any]]:
         return self._rows(
@@ -398,6 +405,8 @@ class Repository:
 
     # -- rendiconto per capitoli (analytic detail) --------------------------
     def capitoli_years(self) -> list[int]:
+        if not self._has_table("rendiconto_capitoli"):
+            return []
         rows = self._rows("SELECT DISTINCT year FROM rendiconto_capitoli ORDER BY year")
         return [int(r["year"]) for r in rows]
 
