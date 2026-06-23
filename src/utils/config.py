@@ -169,6 +169,8 @@ class RendicontoProfile:
 
 
 RENDICONTO_PROFILES: dict[str, RendicontoProfile] = {
+    "RENDICONTO_2020_testo_coord._con_copertina-indice-n._pagine.pdf": RendicontoProfile(
+        "rendiconto_gestione", 2020, (10, 11), (44, 47)),
     "All. 1 Rendiconto 2021 TESTO INTEGRATO.pdf": RendicontoProfile(
         "rendiconto_gestione", 2021, (10, 11), (44, 47)),
     "All. n. 1 Rendiconto 2022.pdf": RendicontoProfile(
