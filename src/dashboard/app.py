@@ -680,12 +680,18 @@ def _rendiconto_stacked(rows, measure_label: str, percent: bool, kind: str):
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _render_capitoli_detail(kind: str, year: int, measure: str, measure_label: str):
+def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
     """Optional, collapsed drill-down from a missione/titolo down to single
     capitoli: a zoomable treemap to explode the macro-areas plus a filtered table
     to reach the individual capitoli. Kept in an expander so the summary screens
-    stay uncluttered."""
+    stay uncluttered. Has its own year selector (the analytic detail is available
+    only for the years whose per-capitoli PDF has been ingested)."""
+    cap_years = capitoli_years()
     with st.expander("🔍 Esplora il dettaglio per capitoli"):
+        year = st.selectbox(
+            "Anno (dettaglio analitico)", sorted(cap_years, reverse=True), key="cap_year",
+            help="Il dettaglio per capitoli è disponibile per gli anni di cui è stato "
+                 "caricato il rendiconto analitico.")
         root = "Spese" if kind == "spesa" else "Entrate"
         lab1 = "Missione" if kind == "spesa" else "Titolo"
         lab2 = "Programma" if kind == "spesa" else "Tipologia"
@@ -834,9 +840,11 @@ def page_rendiconto():
             file_name=f"rendiconto_{kind}_{measure}.csv", mime="text/csv")
 
     # -- optional analytic drill-down to single capitoli -----------------------
+    # Shown whenever any per-capitoli year exists (it has its own year selector);
+    # the measure must be one the analytic detail carries.
     core = {"previsioni", "impegni", "pagamenti_totali", "accertamenti", "riscossioni_totali"}
-    if year in capitoli_years() and measure in core:
-        _render_capitoli_detail(kind, year, measure, measures[measure])
+    if capitoli_years() and measure in core:
+        _render_capitoli_detail(kind, measure, measures[measure])
 
 
 def _fmt_plain(v, dec: int = 0) -> str:
