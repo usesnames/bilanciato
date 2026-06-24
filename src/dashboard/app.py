@@ -1257,10 +1257,10 @@ def page_open_data():
 
 
 PAGES = {
-    "Prospetti di bilancio": page_statements,
     "Esplora le partecipate": page_entities,
     "Rendiconto della gestione": page_rendiconto,
     "Debito del Comune": page_debito,
+    "Prospetti di bilancio": page_statements,
     "Dati aperti / per LLM": page_open_data,
 }
 
