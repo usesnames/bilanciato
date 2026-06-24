@@ -43,7 +43,10 @@ class EntityFascicolo:
     passivo_pages: tuple[int, ...]
     conto_economico_pages: tuple[int, ...]
     ifrs: bool = False                      # True → IAS/IFRS layout
+    migliaia: int = 1                       # scale factor (1000 when PDF reports in thousands)
+    consolidated: bool = False              # True → IFRS consolidated (group) statements
     rapporti_pages: tuple[int, ...] = ()    # related-party supplement pages (IFRS only)
+    rapporti_entity: str = "Comune di Torino"  # counterparty name as it appears in the PDF
 
 
 # Configured partecipate. Pages are 1-based, as printed in the fascicolo.
@@ -62,11 +65,14 @@ FASCICOLI: list[EntityFascicolo] = [
         name="Iren S.p.A.",
         filename="Relazione Annuale Integrata 2024.pdf",
         year=2024, prev_year=2023,
-        attivo_pages=(426,),
-        passivo_pages=(427,),
-        conto_economico_pages=(428,),
+        attivo_pages=(306,),
+        passivo_pages=(307,),
+        conto_economico_pages=(308,),
         ifrs=True,
-        rapporti_pages=(488, 489),
+        migliaia=1000,
+        consolidated=True,
+        rapporti_pages=(412, 413),
+        rapporti_entity="Comune Torino",
     ),
 ]
 
@@ -87,15 +93,23 @@ def _parse(fasc: EntityFascicolo) -> list[es.StatementItem]:
             ):
                 items += es.normalize_statement_ifrs(
                     _words(pdf, pages), category,
-                    year=fasc.year, prev_year=fasc.prev_year)
-            # Related-party supplement: only the current year is shown
+                    year=fasc.year, prev_year=fasc.prev_year,
+                    migliaia=fasc.migliaia)
             if fasc.rapporti_pages:
-                p488 = {p: pdf.pages[p - 1].extract_words()
-                        for p in fasc.rapporti_pages if p == 488}
-                p489 = {p: pdf.pages[p - 1].extract_words()
-                        for p in fasc.rapporti_pages if p == 489}
-                items += es.normalize_rapporti_ifrs(
-                    p488, p489, year=fasc.year)
+                # first half → page-488 column definitions; second half → page-489
+                rp = fasc.rapporti_pages
+                mid = len(rp) // 2
+                p_left  = {p: pdf.pages[p - 1].extract_words() for p in rp[:mid]}
+                p_right = {p: pdf.pages[p - 1].extract_words() for p in rp[mid:]}
+                rp_kwargs: dict = dict(
+                    year=fasc.year,
+                    entity=fasc.rapporti_entity,
+                    migliaia=fasc.migliaia,
+                )
+                if fasc.consolidated:
+                    rp_kwargs["label_x0_max"] = es.RP_CONSOL_LABEL_X0_MAX
+                    rp_kwargs["col_bounds"]   = es.RP_CONSOL_COL_BOUNDS
+                items += es.normalize_rapporti_ifrs(p_left, p_right, **rp_kwargs)
         else:
             for category, pages in (
                 (es.ATTIVO, fasc.attivo_pages),
@@ -125,11 +139,19 @@ def _validate(fasc: EntityFascicolo, items: list[es.StatementItem]) -> list[str]
                 problems.append(f"{yr}: totale attivo/passivo non trovato ({ta} / {tp})")
             elif ta != tp:
                 problems.append(f"{yr}: attivo {ta} != passivo {tp}")
-            ce = find(es.CONTO_ECONOMICO, yr,
-                      lambda n: "RISULTATONETTO" in n and "PERIODO" in n
-                                and "ATTIVITA" not in n)
-            sp = find(es.PASSIVO, yr,
-                      lambda n: "RISULTATONETTO" in n and "PERIODO" in n)
+            if fasc.consolidated:
+                # Consolidated CE shows total result + attribution split; SP shows parent share.
+                # Match the "attribuibile agli azionisti" CE line against SP patrimonio netto.
+                ce = find(es.CONTO_ECONOMICO, yr,
+                          lambda n: "ATTRIBUIBILEAGLI" in n and "AZIONISTI" in n)
+                sp = find(es.PASSIVO, yr,
+                          lambda n: "RISULTATONETTO" in n and "PERIODO" in n)
+            else:
+                ce = find(es.CONTO_ECONOMICO, yr,
+                          lambda n: "RISULTATONETTO" in n and "PERIODO" in n
+                                    and "ATTIVITA" not in n)
+                sp = find(es.PASSIVO, yr,
+                          lambda n: "RISULTATONETTO" in n and "PERIODO" in n)
             if ce is not None and sp is not None and ce != sp:
                 problems.append(f"{yr}: risultato netto CE {ce} != SP {sp}")
         else:

@@ -102,8 +102,13 @@ _IFRS_PRV_X1_MAX = 495.0
 _IFRS_TOTAL_FIRST = frozenset({"totale", "risultato", "margine", "ebit", "ebitda"})
 
 # Related-party table: right-edge boundaries separating the 5 value columns.
-# Observed on pages 488-489: dashes land at x1 ≈ 308, 366, 423, 477, 535.
+# Separato (pp.488-489): dashes land at x1 ≈ 308, 366, 423, 477, 535.
 _RP_COL_BOUNDS = (336.0, 393.0, 450.0, 506.0)
+# Consolidated (pp.412-413): columns are shifted left, first col at x1 ≈ 278.
+RP_CONSOL_COL_BOUNDS = (310.0, 375.0, 440.0, 505.0)
+# In the consolidated rapporti table the first value column starts at x0 ≈ 251,
+# so the label threshold must be lower than the default 255.
+RP_CONSOL_LABEL_X0_MAX = 230.0
 
 # Column names and SP/CE category for each of the five columns on page 488.
 _RP_P488_COLS: tuple[tuple[str, str], ...] = (
@@ -145,6 +150,8 @@ def _parse_amount(tok: str) -> int | None:
     tolerating merged dotted leaders (``O____21_6_._1_72``). Returns ``None`` if the
     token carries no number."""
     s = tok.strip().rstrip("_").rstrip("-").rstrip(".")
+    if "," in s:   # Italian decimal separator → EPS / percentage, not a statement integer
+        return None
     m = re.search(r"\(?\d[\d._]*\d\)?$|\(?\d\)?$", s)
     if not m:
         return None
@@ -314,12 +321,14 @@ def _ifrs_is_total(label: str) -> bool:
 
 
 def normalize_statement_ifrs(
-    pages: dict[int, list[dict]], category: str, *, year: int, prev_year: int
+    pages: dict[int, list[dict]], category: str, *, year: int, prev_year: int,
+    migliaia: int = 1,
 ) -> list[StatementItem]:
     """Normalize one IAS/IFRS statement section.
 
     Handles the 4-column layout and multi-line labels where a label fragment
     sits on the row immediately above or below the value row (≤ 10 px apart).
+    Pass ``migliaia=1000`` when the PDF reports in thousands of euros.
     """
     items: list[StatementItem] = []
     seq = 0
@@ -377,7 +386,7 @@ def normalize_statement_ifrs(
                 continue
             items.append(StatementItem(
                 category=category, seq=seq, code="", name=label,
-                year=yr, value=Decimal(val), is_total=is_tot,
+                year=yr, value=Decimal(val * migliaia), is_total=is_tot,
                 related_party=None, source_page=page_no))
         seq += 1
         i += 1
@@ -385,49 +394,54 @@ def normalize_statement_ifrs(
     return items
 
 
-def _rp_col_index(x1: float) -> int:
-    """Map a word's right edge to a 0-based column index in the related-party table."""
-    for idx, bound in enumerate(_RP_COL_BOUNDS):
-        if x1 <= bound:
-            return idx
-    return len(_RP_COL_BOUNDS)
-
-
 def normalize_rapporti_ifrs(
-    pages_488: dict[int, list[dict]],
-    pages_489: dict[int, list[dict]],
+    pages_left: dict[int, list[dict]],
+    pages_right: dict[int, list[dict]],
     *,
     year: int,
     entity: str = "Comune di Torino",
     migliaia: int = 1000,
+    label_x0_max: float = _IFRS_LABEL_X0_MAX,
+    col_bounds: tuple[float, ...] = _RP_COL_BOUNDS,
 ) -> list[StatementItem]:
     """Extract one counterparty's row from IREN's related-party supplement.
 
-    Pages 488-489 have a 5-column layout each (different column names per page).
-    Values are in *migliaia di euro*; multiply by ``migliaia`` to get full euros.
-    Only non-zero cells are stored.
+    Each pages dict carries one half of the table (5 columns per page, different
+    column names).  Values are in *migliaia di euro*; multiply by ``migliaia`` to
+    get full euros.  Only non-zero cells are stored.
+
+    Pass ``label_x0_max`` and ``col_bounds`` to adapt to different PDF layouts
+    (the consolidated table on pp.412-413 has tighter column spacing than the
+    standalone table on pp.488-489).
     """
     items: list[StatementItem] = []
     seq = 0
 
+    def _col_index(x1: float) -> int:
+        for idx, bound in enumerate(col_bounds):
+            if x1 <= bound:
+                return idx
+        return len(col_bounds)
+
     for pages, col_defs in (
-        (pages_488, _RP_P488_COLS),
-        (pages_489, _RP_P489_COLS),
+        (pages_left,  _RP_P488_COLS),
+        (pages_right, _RP_P489_COLS),
     ):
         for page_no in sorted(pages):
             for ws in _cluster_rows(pages[page_no]):
                 if not ws or ws[0]["top"] < _IFRS_SKIP_TOP:
                     continue
-                label_words = [w["text"] for w in ws if w["x0"] < _IFRS_LABEL_X0_MAX]
-                if entity.lower() not in " ".join(label_words).lower():
+                label_words = [w["text"] for w in ws if w["x0"] < label_x0_max]
+                row_label = " ".join(label_words).strip()
+                if not row_label.lower().startswith(entity.lower()):
                     continue
-                for w in ws:
-                    if w["x0"] < _IFRS_LABEL_X0_MAX:
+                for w in sorted(ws, key=lambda x: x["x0"]):
+                    if w["x0"] < label_x0_max:
                         continue
                     v = _parse_amount(w["text"])
                     if v is None or v == 0:
                         continue
-                    col = _rp_col_index(w["x1"])
+                    col = _col_index(w["x1"])
                     if col >= len(col_defs):
                         continue
                     col_name, cat = col_defs[col]
