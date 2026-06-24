@@ -1,4 +1,4 @@
-.PHONY: install ingest load-bdap-rendiconto load-bdap-comuni load-debito load-popolazione load-rendiconto-csv dashboard publish serve-site test lint format clean
+.PHONY: install ingest load-bdap-rendiconto load-bdap-comuni load-debito load-popolazione load-entity-statements load-rendiconto-csv dashboard publish serve-site test lint format clean
 
 PY := .venv/bin/python
 PIP := .venv/bin/pip
@@ -20,6 +20,9 @@ load-debito:  ## load the curated municipal-debt series (Collegio dei revisori) 
 
 load-popolazione:  ## load the Comune di Torino resident-population series (for euro per-capita)
 	$(PY) -m src.etl.load_popolazione
+
+load-entity-statements:  ## load the partecipate civil-code statements (SP+CE) from uploads/partecipate
+	$(PY) -m src.etl.load_entity_statements
 
 load-rendiconto-csv:  ## load a rendiconto from the Formato aperto CSVs (2019, PDF unusable)
 	$(PY) -m src.etl.load_rendiconto_csv

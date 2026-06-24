@@ -240,16 +240,67 @@ class Repository:
         )
 
     def entity_directory(self) -> list[dict[str, Any]]:
-        """Distinct canonical entities across all years (for the explorer index)."""
+        """Distinct canonical entities across all years (for the explorer index).
+
+        Unions the GAP directory (``entities``, the Comune's *direct*
+        participations) with the consolidation-perimeter entities that appear
+        only in ``entity_metrics`` (personale/valutazione). The latter includes
+        intermediary holdings such as FCT Holding — which controls GTT — that
+        are not direct participations and so are absent from the GAP table, but
+        the user still expects to find in the explorer.
+        """
         return self._rows(
-            """SELECT canonical_slug, canonical_name,
+            """WITH all_ent AS (
+                   SELECT canonical_slug, canonical_name, entity_type, year
+                   FROM entities WHERE canonical_slug IS NOT NULL
+                   UNION ALL
+                   SELECT canonical_slug, canonical_name, NULL AS entity_type, year
+                   FROM entity_metrics WHERE canonical_slug IS NOT NULL
+                   UNION ALL
+                   SELECT entity_slug AS canonical_slug, entity_name AS canonical_name,
+                          NULL AS entity_type, year
+                   FROM entity_statements
+               )
+               SELECT canonical_slug,
+                      max(canonical_name) AS canonical_name,
                       max(entity_type) AS entity_type,
                       min(year) AS first_year, max(year) AS last_year,
                       count(DISTINCT year) AS n_years
-               FROM entities
-               WHERE canonical_slug IS NOT NULL
-               GROUP BY canonical_slug, canonical_name
+               FROM all_ent
+               GROUP BY canonical_slug
                ORDER BY canonical_name"""
+        )
+
+    # -- partecipate civil-code statements (SP + CE) ------------------------
+    def entity_statement_years(self, slug: str) -> list[int]:
+        """Years for which a fascicolo statement is loaded for this entity."""
+        return [r["year"] for r in self._rows(
+            "SELECT DISTINCT year FROM entity_statements WHERE entity_slug = ? "
+            "ORDER BY year DESC", [slug])]
+
+    def entity_statements(self, slug: str, *, category: str | None = None,
+                          years: list[int] | None = None) -> list[dict[str, Any]]:
+        """The civil-code statement rows of a partecipata, in printed order.
+
+        Long-format (one row per voce x year); the dashboard pivots the years
+        side by side. Optionally filtered to a category and/or a set of years.
+        """
+        where = ["entity_slug = ?"]
+        params: list[Any] = [slug]
+        if category is not None:
+            where.append("category = ?")
+            params.append(category)
+        if years:
+            where.append(f"year IN ({', '.join('?' * len(years))})")
+            params.extend(years)
+        return self._rows(
+            f"""SELECT entity_slug, entity_name, year, category, seq, code, name,
+                       value, unit, is_total, related_party,
+                       source_document, source_page
+                FROM entity_statements
+                WHERE {' AND '.join(where)}
+                ORDER BY category, seq, year DESC""",
+            params,
         )
 
     # -- rendiconto della gestione ------------------------------------------
@@ -426,6 +477,16 @@ class Repository:
         return self._rows(
             "SELECT comune, year, residenti, source FROM popolazione "
             "ORDER BY comune, year"
+        )
+
+    def all_entity_statements(self) -> list[dict[str, Any]]:
+        """Every partecipata civil-code statement row (for the open-data export)."""
+        return self._rows(
+            """SELECT entity_slug, entity_name, year, category, seq, code, name,
+                      value, unit, is_total, related_party,
+                      source_document, source_page
+               FROM entity_statements
+               ORDER BY entity_slug, category, seq, year DESC"""
         )
 
     # -- debito (curated municipal-debt series) -----------------------------

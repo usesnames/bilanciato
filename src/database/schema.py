@@ -197,6 +197,36 @@ CREATE TABLE IF NOT EXISTS popolazione (
     PRIMARY KEY (comune, year)
 );
 
+-- Civil-code financial statements (stato patrimoniale + conto economico, schemi
+-- ex artt. 2424/2425 c.c.) of the most important partecipate, parsed from each
+-- società's deposited *fascicolo di bilancio* (uploads/partecipate/). Standalone
+-- like ``debito``: not part of the consolidato ingest, so no document_id FK; the
+-- source PDF + page are recorded per row. Long-format: one row per (voce x year),
+-- with both the current and prior year of each fascicolo.
+--   entity_slug  reuses the consolidato canonical slug (e.g. "infratrasporti_to")
+--   category     'stato_patrimoniale_attivo' | 'stato_patrimoniale_passivo' |
+--                'conto_economico'
+--   code         leading schema code ("A.I.", "11)", "") -- "" for totals/results
+--   is_total     the line is a (sub)total / result row
+--   related_party 'socio' (verso/da controllanti = Città di Torino) | 'gruppo_socio'
+--                (imprese sottoposte al controllo delle controllanti) | 'controllate'
+CREATE TABLE IF NOT EXISTS entity_statements (
+    id            INTEGER PRIMARY KEY,
+    entity_slug   VARCHAR NOT NULL,
+    entity_name   VARCHAR NOT NULL,
+    year          INTEGER NOT NULL,
+    category      VARCHAR NOT NULL,
+    seq           INTEGER NOT NULL,   -- printed order within (category, year)
+    code          VARCHAR,
+    name          VARCHAR NOT NULL,
+    value         DECIMAL(20, 2),
+    unit          VARCHAR NOT NULL DEFAULT 'EUR',
+    is_total      BOOLEAN NOT NULL DEFAULT FALSE,
+    related_party VARCHAR,
+    source_document VARCHAR NOT NULL,
+    source_page   INTEGER NOT NULL
+);
+
 -- The entity-name crosswalk: every raw name seen in any source mapped to its
 -- canonical slug/name. This is the "normalization map" as a queryable object.
 CREATE OR REPLACE VIEW entity_crosswalk AS

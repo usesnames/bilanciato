@@ -162,6 +162,16 @@ def entities_with_metric(metric_name: str):
 
 
 @st.cache_data(ttl=300)
+def entity_statement_years(slug: str):
+    return get_repo().entity_statement_years(slug)
+
+
+@st.cache_data(ttl=300)
+def entity_statements(slug: str, category: str | None = None, years=None):
+    return get_repo().entity_statements(slug, category=category, years=years)
+
+
+@st.cache_data(ttl=300)
 def rendiconto_years():
     return get_repo().rendiconto_years()
 
@@ -437,6 +447,150 @@ def render_income_table(df) -> str:
     return _CE_STYLE + head + "".join(body) + "</tbody></table>"
 
 
+# -- partecipata civil-code statements (SP + CE) ------------------------------
+STATEMENT_CATEGORIES = [
+    ("stato_patrimoniale_attivo", "Stato patrimoniale · Attivo"),
+    ("stato_patrimoniale_passivo", "Stato patrimoniale · Passivo"),
+    ("conto_economico", "Conto economico"),
+]
+
+_RP_BADGE = {
+    "socio": ("socio", "Rapporto con il socio unico Città di Torino"),
+    "gruppo_socio": ("gruppo", "Imprese sottoposte al controllo del socio (gruppo Città di Torino)"),
+    "controllate": ("controllate", "Imprese controllate / collegate"),
+}
+
+_STMT_STYLE = """
+<style>
+.st-tab{width:100%;border-collapse:collapse;font-size:0.86rem;}
+.st-tab th{text-align:right;border-bottom:2px solid rgba(128,128,128,.4);
+  padding:6px 10px;font-weight:600;}
+.st-tab th.v{text-align:left;}
+.st-tab td{border-bottom:1px solid rgba(128,128,128,.16);padding:4px 10px;
+  vertical-align:top;}
+.st-tab td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.st-tab td.dlt{text-align:right;font-variant-numeric:tabular-nums;color:#888;white-space:nowrap;}
+.st-tab tr.tot td{font-weight:700;background:rgba(128,128,128,.10);}
+.st-tab tr.rp td{background:rgba(37,99,235,.10);}
+.st-badge{display:inline-block;margin-left:7px;padding:0 7px;border-radius:9px;
+  background:#2563eb;color:#fff;font-size:10px;font-weight:700;cursor:help;vertical-align:middle;}
+</style>
+"""
+
+
+def _stmt_depth(code, is_total) -> int:
+    c = (code or "").strip()
+    if is_total or not c:
+        return 0
+    if re.match(r"^[A-E][.\)]$", c):
+        return 0
+    if re.match(r"^[A-E]\.[IVX]", c):
+        return 1
+    if re.match(r"^[a-z]", c):
+        return 3
+    return 2  # numbered voce
+
+
+def _render_statement_table(rows, years) -> str:
+    """Render one statement category (long-format rows) as an HTML table with the
+    two years side by side, a Δ% column, bold (sub)totals and highlighted
+    related-party lines (rapporti col socio)."""
+    by_seq: dict[int, dict] = {}
+    for r in rows:
+        s = by_seq.setdefault(int(r["seq"]), {
+            "name": r["name"], "code": r["code"], "is_total": bool(r["is_total"]),
+            "rp": r["related_party"], "vals": {}})
+        s["vals"][int(r["year"])] = r["value"]
+    cur_y, prev_y = years[0], (years[1] if len(years) > 1 else None)
+    head = ("<table class='st-tab'><thead><tr><th class='v'>voce</th>"
+            f"<th>{cur_y}</th>" + (f"<th>{prev_y}</th><th>Δ%</th>" if prev_y else "")
+            + "</tr></thead><tbody>")
+    body = []
+    for seq in sorted(by_seq):
+        s = by_seq[seq]
+        depth = _stmt_depth(s["code"], s["is_total"])
+        cur = s["vals"].get(cur_y)
+        prev = s["vals"].get(prev_y) if prev_y else None
+        delta = "-"
+        if cur is not None and prev not in (None, 0):
+            delta = f"{(float(cur) - float(prev)) / abs(float(prev)) * 100:+.1f}%"
+        badge = ""
+        if s["rp"] in _RP_BADGE:
+            short, full = _RP_BADGE[s["rp"]]
+            badge = f"<span class='st-badge' title='{_esc(full)}'>{short}</span>"
+        voce = (f"<span style='padding-left:{depth * 16}px'>{_esc(s['name'])}</span>"
+                + badge)
+        cls = "tot" if s["is_total"] else ("rp" if s["rp"] == "socio" else "")
+        cells = f"<td class='num'>{_esc(fmt_eur(cur))}</td>"
+        if prev_y:
+            cells += (f"<td class='num'>{_esc(fmt_eur(prev))}</td>"
+                      f"<td class='dlt'>{delta}</td>")
+        body.append(f"<tr class='{cls}'><td>{voce}</td>{cells}</tr>")
+    return _STMT_STYLE + head + "".join(body) + "</tbody></table>"
+
+
+def _render_rapporti_socio(slug: str, years) -> None:
+    """A compact callout summarizing the entity's credit/debt position toward the
+    socio unico Città di Torino (the 'verso controllanti' schema lines)."""
+    rows = [r for r in entity_statements(slug, years=years)
+            if r["related_party"] == "socio"]
+    cur_y = years[0]
+    cred = sum(float(r["value"]) for r in rows
+               if r["category"] == "stato_patrimoniale_attivo" and int(r["year"]) == cur_y)
+    deb = sum(float(r["value"]) for r in rows
+              if r["category"] == "stato_patrimoniale_passivo" and int(r["year"]) == cur_y)
+    if not cred and not deb:
+        return
+    st.markdown(f"**Rapporti con il socio unico Città di Torino** · {cur_y}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Crediti verso il Comune", fmt_eur(cred),
+              help="Voci «verso controllanti» dell'attivo (es. mutui metropolitana, "
+                   "contributi da incassare).")
+    c2.metric("Debiti verso il Comune", fmt_eur(deb),
+              help="Voci «verso controllanti» del passivo.")
+    c3.metric("Posizione netta", fmt_eur(cred - deb),
+              help="Crediti meno debiti verso il socio unico. Positivo = il Comune "
+                   "deve alla società.")
+
+
+def page_entity_statements(slug: str, display_name: str) -> None:
+    """Render the partecipata's civil-code SP + CE (latest two years)."""
+    syrs = entity_statement_years(slug)
+    if not syrs:
+        return
+    years = syrs[:2]  # show only the latest two (e.g. 2024, 2023)
+    st.subheader("Bilancio d'esercizio (schema civilistico)")
+    st.caption(
+        f"Stato patrimoniale e conto economico di {display_name} dal fascicolo di "
+        f"bilancio depositato, schema ex artt. 2424/2425 c.c. Esercizi "
+        f"{years[-1]}-{years[0]}. Le voci evidenziate sono **rapporti con il socio "
+        f"Città di Torino**.")
+    _render_rapporti_socio(slug, years)
+    hide_zero = st.toggle(
+        "Nascondi voci a zero", value=True, key=f"stmt_zero_{slug}",
+        help="Nasconde le righe dello schema con valore nullo in entrambi gli anni.")
+    tabs = st.tabs([lbl for _cat, lbl in STATEMENT_CATEGORIES])
+    src_doc = src_pages = None
+    for tab, (cat, _lbl) in zip(tabs, STATEMENT_CATEGORIES):
+        rows = entity_statements(slug, category=cat, years=years)
+        if hide_zero:
+            keep = {int(r["seq"]) for r in rows if r["value"] not in (None, 0)}
+            rows = [r for r in rows if int(r["seq"]) in keep]
+        with tab:
+            if not rows:
+                st.info("Nessuna voce.")
+                continue
+            st.markdown(_render_statement_table(rows, years), unsafe_allow_html=True)
+            src_doc = rows[0]["source_document"]
+            pgs = sorted({int(r["source_page"]) for r in rows})
+            src_pages = ", ".join(str(p) for p in pgs)
+            st.download_button(
+                "Scarica CSV", pd.DataFrame(rows).to_csv(index=False).encode("utf-8"),
+                file_name=f"{slug}_{cat}.csv", mime="text/csv", key=f"dl_{slug}_{cat}")
+    if src_doc:
+        st.caption(f"Fonte: {src_doc} (uploads/partecipate), pagg. {src_pages}.")
+
+
 # -- pages --------------------------------------------------------------------
 def page_overview():
     st.header("Panoramica")
@@ -547,6 +701,9 @@ def page_entities():
                 columns={"year": "anno", "name": "denominazione", "entity_type": "tipo",
                          "ownership_percentage": "quota %", "source_page": "pag."}),
             use_container_width=True, hide_index=True)
+
+    # -- civil-code statements (SP + CE) from the deposited fascicolo ---------
+    page_entity_statements(slug, choice)
 
     # -- multi-year comparison of a per-entity metric -------------------------
     multiyear = entity_metrics_multiyear(slug)
@@ -779,13 +936,22 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             return
         d = pd.DataFrame(rows)
         d["importo"] = d["value"].map(fmt_eur)
-        view = d[["capitolo_code", "denominazione", "liv2_name", "liv3_name",
-                  "importo", "source_page"]].rename(columns={
+        # Technical-entry note (e.g. gestione incassi vincolati ex art. 195 TUEL):
+        # a brief flag in the table, the full text on hover and in a banner below.
+        d["_note"] = [
+            (glossary.capitolo_note(dn) or (None,))[0] for dn in d["denominazione"]]
+        d["nota"] = ["⚠️ regolarizzazione contabile (art. 195 TUEL)" if n else ""
+                     for n in d["_note"]]
+        cols = ["capitolo_code", "denominazione", "liv2_name", "liv3_name",
+                "importo", "nota", "source_page"]
+        view = d[cols].rename(columns={
             "capitolo_code": "cod.", "denominazione": "capitolo",
             "liv2_name": lab2.lower(), "liv3_name": lab3.lower(),
             "source_page": "pag."})
         st.caption(f"{len(d)} capitoli · {measure_label.lower()} {year}")
         st.dataframe(view, use_container_width=True, hide_index=True, height=420)
+        for note in dict.fromkeys(n for n in d["_note"] if n):
+            st.info(note)
         st.download_button(
             "Scarica capitoli (CSV)", d.to_csv(index=False).encode("utf-8"),
             file_name=f"capitoli_{kind}_{measure}_{year}.csv", mime="text/csv",
@@ -821,15 +987,23 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
                 st.info("Nessun importo per questa voce.")
                 return
             tdf = pd.DataFrame(pts).sort_values("year")
+            note_entry = glossary.capitolo_note(choice["name"]) if level == "capitolo" else None
+            note_suffix = ""
+            if note_entry:
+                note_suffix = "<br><span style='font-size:11px'>" + "<br>".join(
+                    textwrap.wrap(_esc(note_entry[0]), 58)) + "</span>"
             fig2 = go.Figure(go.Bar(
                 x=tdf["year"], y=[scale_eur(v) for v in tdf["value"]],
                 text=[fmt_eur(v) for v in tdf["value"]], textposition="outside",
                 marker_color=_PALETTE[0],
-                hovertemplate="<b>%{x}</b><br>%{y:,.0f} " + eur_unit() + "<extra></extra>"))
+                hovertemplate="<b>%{x}</b><br>%{y:,.0f} " + eur_unit()
+                + note_suffix + "<extra></extra>"))
             fig2.update_layout(height=340, yaxis_title=eur_unit(), xaxis=dict(dtick=1),
-                               margin=dict(t=34, b=10),
+                               margin=dict(t=34, b=10), hoverlabel=dict(align="left"),
                                title=f"{choice['name'][:70]} — {measure_label}")
             st.plotly_chart(fig2, use_container_width=True)
+            if note_entry:
+                st.info(note_entry[0])
             if len(tdf) > 1:
                 first, last = tdf.iloc[0], tdf.iloc[-1]
                 delta = last["value"] - first["value"]

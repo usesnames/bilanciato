@@ -314,3 +314,44 @@ def titolo_desc(code) -> tuple[str, str] | None:
     """``(description, source)`` for a revenue titolo code, or None."""
     c = "" if code is None else str(code).strip()
     return (TITOLI[c], SRC_TITOLI) if c in TITOLI else None
+
+
+# -- per-capitolo explanatory notes -------------------------------------------
+# Some capitoli of the "Servizi per conto terzi" group are not real spending but
+# technical accounting entries. Where a capitolo's denominazione matches a pattern
+# below, the dashboard shows the note (hover + table) to keep readers from reading
+# these as actual outlays.
+SRC_TUEL = "Art. 195 D.Lgs 267/2000 (TUEL) — utilizzo di entrate vincolate"
+
+_ART195_SPESA = (
+    "Regolarizzazione contabile (Art. 195 TUEL): non è una vera spesa, ma la somma "
+    "di tutti i movimenti effettuati nell'anno per reintegrare i fondi vincolati "
+    "(es. PNRR) temporaneamente utilizzati per pagamenti urgenti. Questa operazione "
+    "tecnica evita lo scoperto di conto e i conseguenti interessi passivi con le "
+    "banche."
+)
+_ART195_ENTRATA = (
+    "Regolarizzazione contabile (Art. 195 TUEL): non è una vera entrata, ma la "
+    "contropartita in entrata degli stessi movimenti sui fondi vincolati (es. PNRR) "
+    "temporaneamente utilizzati per pagamenti urgenti e poi reintegrati. Pareggia le "
+    "corrispondenti uscite per conto terzi; è un'operazione tecnica che evita lo "
+    "scoperto di conto e i conseguenti interessi passivi con le banche."
+)
+
+
+def capitolo_note(denominazione) -> tuple[str, str] | None:
+    """``(note, source)`` clarifying a capitolo whose denominazione is a technical
+    entry rather than a real expense/revenue (gestione degli incassi vincolati ex
+    art. 195 TUEL, su entrambi i lati), or None. The wording is tailored to the
+    spesa vs entrata side, read from the denominazione."""
+    n = _normalize(denominazione)
+    matches = (
+        ("incassi vincolati" in n
+         and ("art. 195" in n or "art.195" in n or "reintegro" in n
+              or "utilizzo incassi" in n or "destinazione incassi" in n))
+        or "regolarizzazione cassa vincolata" in n
+    )
+    if not matches:
+        return None
+    note = _ART195_ENTRATA if n.startswith("entrate") else _ART195_SPESA
+    return (note, SRC_TUEL)

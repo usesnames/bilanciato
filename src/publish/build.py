@@ -147,6 +147,7 @@ def build_data_files(repo: Repository, data_dir: Path) -> dict[str, int]:
     capitoli = repo.all_capitoli()  # analytic per-capitolo detail (large: CSV only)
     confronto = repo.all_rendiconto_comuni()  # città metropolitane comparison (BDAP)
     popolazione = repo.popolazione_all()  # resident series per comune (euro per-capita)
+    entity_statements = repo.all_entity_statements()  # partecipate SP+CE (civil-code)
 
     # Multi-year series for the headline totals (one authoritative value per year).
     timeseries = {}
@@ -168,6 +169,9 @@ def build_data_files(repo: Repository, data_dir: Path) -> dict[str, int]:
     if popolazione:
         _write_json(data_dir / "popolazione.json", popolazione)
         _write_csv(data_dir / "popolazione.csv", popolazione)
+    if entity_statements:
+        _write_json(data_dir / "entity_statements.json", entity_statements)
+        _write_csv(data_dir / "entity_statements.csv", entity_statements)
     _write_json(data_dir / "timeseries.json", timeseries)
     _write_csv(data_dir / "metrics.csv", metrics)
     _write_csv(data_dir / "entities.csv", entities)
@@ -184,19 +188,21 @@ def build_data_files(repo: Repository, data_dir: Path) -> dict[str, int]:
         "entity_metrics": len(entity_metrics), "note_items": len(notes),
         "rendiconto": len(rendiconto), "debito": len(debito), "capitoli": len(capitoli),
         "confronto_comuni": len(confronto), "popolazione": len(popolazione),
+        "entity_statements": len(entity_statements),
         "files": ["documents.json", "metrics.json", "entities.json",
                   "entity_metrics.json", "note_items.json", "rendiconto.json",
                   "debito.json", "timeseries.json", "metrics.csv", "entities.csv",
                   "entity_metrics.csv", "note_items.csv", "rendiconto.csv",
                   "debito.csv", "capitoli.csv"]
                  + (["confronto_comuni.json", "confronto_comuni.csv"] if confronto else [])
-                 + (["popolazione.json", "popolazione.csv"] if popolazione else []),
+                 + (["popolazione.json", "popolazione.csv"] if popolazione else [])
+                 + (["entity_statements.json", "entity_statements.csv"] if entity_statements else []),
     })
     return {"documents": len(docs), "metrics": len(metrics), "entities": len(entities),
             "entity_metrics": len(entity_metrics), "note_items": len(notes),
             "rendiconto": len(rendiconto), "debito": len(debito),
             "capitoli": len(capitoli), "confronto_comuni": len(confronto),
-            "popolazione": len(popolazione)}
+            "popolazione": len(popolazione), "entity_statements": len(entity_statements)}
 
 
 def build_year_page(repo: Repository, out: Path, year: int, filename: str) -> None:
@@ -318,6 +324,11 @@ def build_llms_txt(repo: Repository, out: Path, doc_years: list[tuple[int, str]]
               "- [popolazione.json](data/popolazione.json): residenti del Comune di Torino "
               "iscritti in anagrafe al 31/12 (serie 2015-2025; fonte: Servizio Statistica "
               "del Comune), usati per esprimere il rendiconto in euro per abitante.",
+              "- [entity_statements.json](data/entity_statements.json): stato patrimoniale "
+              "e conto economico (schema civilistico ex artt. 2424/2425 c.c.) delle "
+              "partecipate più importanti, dal fascicolo di bilancio depositato di ciascuna "
+              "società (esercizio corrente e precedente). Campo `related_party` marca i "
+              "rapporti col socio Città di Torino (verso/da controllanti).",
               "- versioni CSV degli stessi file in [data/](data/)",
               "",
               "## Note",

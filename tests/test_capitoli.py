@@ -12,7 +12,24 @@ from decimal import Decimal
 
 import pytest
 
+from src.dashboard.glossary import capitolo_note
 from src.normalization.rendiconto_capitoli import normalize_capitoli
+
+
+def test_capitolo_note_art195_both_sides():
+    sp = capitolo_note("USCITE DERIVANTI DALLA GESTIONE DEGLI INCASSI VINCOLATI "
+                       "DEGLI ENTI LOCALI - UTILIZZO INCASSI VINCOLATI AI SENSI "
+                       "DELL'ART. 195 DEL TUEL - settore 024")
+    en = capitolo_note("ENTRATE DERIVANTI DALLA GESTIONE DEGLI INCASSI VINCOLATI "
+                       "DEGLI ENTI LOCALI - REINTEGRO INCASSI VINCOLATI AI SENSI "
+                       "DELL'ART. 195 DEL TUEL - settore 024")
+    reg = capitolo_note("ENTRATE PER REGOLARIZZAZIONE CASSA VINCOLATA A SEGUITO "
+                        "DI ERRONEA IMPUTAZIONE - SET. 024")
+    assert sp and "non è una vera spesa" in sp[0]
+    assert en and "non è una vera entrata" in en[0]
+    assert reg and "non è una vera entrata" in reg[0]
+    assert capitolo_note("STIPENDI PERSONALE DI RUOLO") is None
+    assert capitolo_note(None) is None
 from src.utils.config import DB_PATH
 
 # Two spese capitoli (the second with a wrapped denominazione) followed by a

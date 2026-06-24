@@ -19,3 +19,4 @@ site/
 # Source PDFs are large; keep them out of git unless intentionally committed
 uploads/*.pdf
 uploads/bdap_rendiconto/
+uploads/partecipate/
