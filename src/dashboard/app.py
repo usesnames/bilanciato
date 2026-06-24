@@ -897,16 +897,32 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
         df["Capitolo"] = (df["capitolo_code"].astype(str) + " · "
                           + df["denominazione"].astype(str))
         df["val"] = [float(scale_eur(v)) for v in df["value"]]
+        # Art. 195 TUEL note suffix for leaf-level hover (empty string for all others).
+        df["_note_hover"] = [
+            ("<br><span style='font-size:11px;color:#856404'>"
+             + "<br>".join(textwrap.wrap(_esc(r[0]), 55))
+             + "</span>")
+            if (r := glossary.capitolo_note(dn)) else ""
+            for dn in df["denominazione"]
+        ]
         # Full path down to the single capitolo; maxdepth keeps the initial view at
         # the macro-area level and reveals capitoli on click (responsive with ~4k leaves).
         fig = px.treemap(
             df, path=[px.Constant(root), lab1, lab2, lab3, "Capitolo"], values="val",
-            color=lab1, color_discrete_sequence=_PALETTE, maxdepth=4)
+            color=lab1, color_discrete_sequence=_PALETTE, maxdepth=4,
+            custom_data=["_note_hover"])
+        # Intermediate nodes (missione/programma/macroaggregato) are created by plotly
+        # from the path and get no customdata; replace their NaN with "" so the
+        # %{customdata[0]} token in the hovertemplate renders as nothing.
+        tr = fig.data[0]
+        if tr.customdata is not None:
+            tr.customdata = [[c if isinstance(c, str) else "" for c in row]
+                             for row in tr.customdata]
         fig.update_traces(
             root_color="lightgrey",
             textfont_size=17,
             hovertemplate="<b>%{label}</b><br>%{value:,.0f} " + eur_unit()
-            + "<br>%{percentRoot} del totale<extra></extra>")
+            + "<br>%{percentRoot} del totale%{customdata[0]}<extra></extra>")
         # Fixed font (no uniformtext) => plotly keeps every label at 17px and shows
         # only the part that fits the tile, clipping the rest at the box edge (the
         # full name is always available on hover). Nothing is hidden.
