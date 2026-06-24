@@ -940,7 +940,7 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
         # a brief flag in the table, the full text on hover and in a banner below.
         d["_note"] = [
             (glossary.capitolo_note(dn) or (None,))[0] for dn in d["denominazione"]]
-        d["nota"] = ["⚠️ regolarizzazione contabile (art. 195 TUEL)" if n else ""
+        d["nota"] = ["⚠️ regolarizzazione contabile (art. 195 TUEL)" if isinstance(n, str) else ""
                      for n in d["_note"]]
         cols = ["capitolo_code", "denominazione", "liv2_name", "liv3_name",
                 "importo", "nota", "source_page"]
@@ -950,7 +950,7 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             "source_page": "pag."})
         st.caption(f"{len(d)} capitoli · {measure_label.lower()} {year}")
         st.dataframe(view, use_container_width=True, hide_index=True, height=420)
-        for note in dict.fromkeys(n for n in d["_note"] if n):
+        for note in dict.fromkeys(n for n in d["_note"] if isinstance(n, str)):
             st.info(note)
         st.download_button(
             "Scarica capitoli (CSV)", d.to_csv(index=False).encode("utf-8"),
