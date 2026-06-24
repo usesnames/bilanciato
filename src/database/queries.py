@@ -414,6 +414,20 @@ class Repository:
                ORDER BY ni.year DESC, ni.source_page, ni.table_index"""
         )
 
+    # -- popolazione (resident series, for euro per-capita) -----------------
+    def popolazione(self, comune: str = "TORINO") -> list[dict[str, Any]]:
+        return self._rows(
+            "SELECT comune, year, residenti, source FROM popolazione "
+            "WHERE comune = ? ORDER BY year",
+            [comune],
+        )
+
+    def popolazione_all(self) -> list[dict[str, Any]]:
+        return self._rows(
+            "SELECT comune, year, residenti, source FROM popolazione "
+            "ORDER BY comune, year"
+        )
+
     # -- debito (curated municipal-debt series) -----------------------------
     def debito_years(self) -> list[int]:
         rows = self._rows("SELECT DISTINCT year FROM debito ORDER BY year")

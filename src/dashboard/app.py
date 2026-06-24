@@ -230,6 +230,16 @@ def debito_years():
     return get_repo().debito_years()
 
 
+@st.cache_data(ttl=300)
+def popolazione(comune: str = "TORINO"):
+    return get_repo().popolazione(comune)
+
+
+@st.cache_data(ttl=300)
+def popolazione_all():
+    return get_repo().popolazione_all()
+
+
 # Human labels for rendiconto measures.
 RENDICONTO_MEASURES = {
     "spesa": {
@@ -666,14 +676,17 @@ def _hover_desc(kind: str, code) -> str:
 
 
 def _rendiconto_stacked(rows, measure_label: str, percent: bool, kind: str,
-                        exclude_codes=(), net_base: bool = False):
+                        exclude_codes=(), net_base: bool = False,
+                        per_capita: bool = False, pop: dict | None = None):
     """Stacked bar chart: x = year, one stacked series per voce (missione/titolo).
 
     Each segment's hover shows the amount, its share of that year's total, and a
     plain-language description of the missione/titolo. ``exclude_codes`` are dropped
     from the chart; the share %% is computed on the total NET of those voci when
     ``net_base`` is set, otherwise on the full (gross) total -- so the user can read
-    each voce against the budget with or without e.g. partite di giro.
+    each voce against the budget with or without e.g. partite di giro. When
+    ``per_capita`` is set, each year's value is divided by that year's residents
+    (``pop`` maps year -> residenti); shares are unaffected (scale-invariant).
     """
     df = pd.DataFrame(rows)
     if df.empty:
@@ -688,6 +701,14 @@ def _rendiconto_stacked(rows, measure_label: str, percent: bool, kind: str,
     if df.empty:
         st.info("Tutte le voci sono escluse.")
         return
+    pop = pop or {}
+
+    def yval(v, year):
+        if per_capita and pop.get(year):
+            return v / pop[year]
+        return scale_eur(v)
+
+    unit_lbl = "€ / ab." if per_capita else eur_unit()
     fig = go.Figure()
     # Order series by their most recent value so the legend/stack reads largest-first.
     last_year = df["year"].max()
@@ -699,14 +720,14 @@ def _rendiconto_stacked(rows, measure_label: str, percent: bool, kind: str,
                  for y, v in zip(d["year"], d["value"])]
         desc_suffix = _hover_desc(kind, d["code"].iloc[0])
         fig.add_trace(go.Bar(
-            x=d["year"], y=[scale_eur(v) for v in d["value"]], name=voce,
+            x=d["year"], y=[yval(v, y) for y, v in zip(d["year"], d["value"])], name=voce,
             marker_color=_PALETTE[idx % len(_PALETTE)],
             customdata=[[f"{s:.1f}"] for s in share],
-            hovertemplate="<b>" + voce + "</b><br>%{y:,.0f} " + eur_unit()
+            hovertemplate="<b>" + voce + "</b><br>%{y:,.0f} " + unit_lbl
             + " — %{customdata[0]}% del totale %{x}" + desc_suffix + "<extra></extra>"))
     fig.update_layout(
         barmode="stack", height=520, xaxis=dict(dtick=1, title=""),
-        yaxis_title=("% sul totale" if percent else eur_unit()),
+        yaxis_title=("% sul totale" if percent else unit_lbl),
         legend=dict(orientation="v", font=dict(size=10)),
         hoverlabel=dict(align="left"),
         margin=dict(t=30, b=10), title=measure_label)
@@ -908,6 +929,25 @@ def page_rendiconto():
              "(comportamento predefinito).",
         disabled=not exclude_codes)
 
+    # -- optional euro-per-resident view (residenti al 31/12) -------------------
+    # Per-comune population: Torino from the Comune's anagrafe, the other città
+    # metropolitane from ISTAT. Drives the per-capita view for the Torino charts AND
+    # for the comparison overlay (each comune divided by its own residents).
+    pop_by_comune: dict[str, dict[int, int]] = {}
+    for p in popolazione_all():
+        pop_by_comune.setdefault(p["comune"], {})[int(p["year"])] = int(p["residenti"])
+    pop = pop_by_comune.get("TORINO", {})
+    per_capita = st.toggle(
+        "€ per abitante",
+        help="Divide ogni importo per i residenti al 31/12 di quell'anno (Torino: "
+             "anagrafe del Comune; altre città: ISTAT). Non si combina con «Valori in "
+             "milioni»; in «In %» non ha effetto (le quote non cambiano).",
+        disabled=not pop)
+    if per_capita and pop:
+        st.caption(
+            f"Importi in **euro per abitante** · residenti Torino: "
+            f"{_fmt_plain(pop.get(max(pop)), 0)} ({max(pop)}).")
+
     # -- optional comparison with another comune (città metropolitane, BDAP) ---
     city_opts = {c["comune"].title(): c["comune"]
                  for c in confronto_cities() if c["comune"] != "TORINO"}
@@ -920,16 +960,22 @@ def page_rendiconto():
         if city_opts else []
     compare_comuni = [city_opts[lbl] for lbl in compare_labels]
 
+    def fmt_pc(v, year):
+        """Format a euro value, as euro-per-resident when the per-capita view is on."""
+        if per_capita and pop.get(year):
+            return _fmt_plain(v / pop[year], 0) + " € / ab."
+        return fmt_eur(v)
+
     # -- headline: incassi vs pagamenti for the latest year --------------------
     latest = max(yrs)
     inc = rendiconto_total(kind="entrata", measure="riscossioni_totali", year=latest)
     pag = rendiconto_total(kind="spesa", measure="pagamenti_totali", year=latest)
     if inc and pag:
         m1, m2, m3 = st.columns(3)
-        m1.metric(f"Riscossioni {latest} (cassa)", fmt_eur(inc["value"]))
-        m2.metric(f"Pagamenti {latest} (cassa)", fmt_eur(pag["value"]))
+        m1.metric(f"Riscossioni {latest} (cassa)", fmt_pc(inc["value"], latest))
+        m2.metric(f"Pagamenti {latest} (cassa)", fmt_pc(pag["value"], latest))
         saldo = inc["value"] - pag["value"]
-        m3.metric(f"Saldo di cassa {latest}", fmt_eur(saldo),
+        m3.metric(f"Saldo di cassa {latest}", fmt_pc(saldo, latest),
                   help="Riscossioni meno pagamenti totali (competenza + residui).")
         st.caption(
             f"Fonte: {inc['source_document']}, pag. {inc['source_page']} (entrate) e "
@@ -937,7 +983,8 @@ def page_rendiconto():
 
     # -- multi-year stacked composition ----------------------------------------
     st.subheader(f"Composizione nel tempo · {measures[measure]}")
-    _rendiconto_stacked(rows, measures[measure], percent, kind, exclude_codes, net_base)
+    _rendiconto_stacked(rows, measures[measure], percent, kind, exclude_codes, net_base,
+                        per_capita=per_capita, pop=pop)
 
     # -- single-year ranked breakdown ------------------------------------------
     st.subheader("Dettaglio di un anno")
@@ -951,57 +998,76 @@ def page_rendiconto():
         gross_tot = sum(r["value"] for r in rows if r["year"] == year)
         tot = (net_tot if net_base else gross_tot) or 1
         df["quota"] = [f"{r['value'] / tot * 100:.1f}%" for _, r in df.iterrows()]
-        df["importo"] = df["value"].map(fmt_eur)
+        df["importo"] = [fmt_pc(v, year) for v in df["value"]]
+        unit_lbl = "€ / ab." if per_capita else eur_unit()
+
+        def xval(comune_key, v):
+            """X value of a bar: % of comune total, euro per resident, or euro."""
+            if percent:
+                return None  # handled by caller (needs the comune base)
+            if per_capita and pop_by_comune.get(comune_key, {}).get(year):
+                return v / pop_by_comune[comune_key][year]
+            return scale_eur(v)
+
         if compare_comuni:
             # Grouped bars: Torino + each selected comune, SAME missione/titolo breakdown.
             order_codes = df["code"].astype(str).tolist()
             label_by_code = {str(c): v for c, v in zip(df["code"], df["voce"])}
-            series = [("Torino", {str(c): float(v) for c, v in zip(df["code"], df["value"])})]
+            # series: (comune_key, display_name, {code: value})
+            series = [("TORINO", "Torino",
+                       {str(c): float(v) for c, v in zip(df["code"], df["value"])})]
             for cm in compare_comuni:
                 crows = confronto_rendiconto(comune=cm, kind=kind, measure=measure)
                 vb = {str(r["code"]): float(r["value"]) for r in crows
                       if r["year"] == year and str(r["code"]) not in exclude_codes}
-                series.append((cm.title(), vb))
+                series.append((cm, cm.title(), vb))
                 for code in vb:  # a missione/titolo Torino lacks: append it to the axis
                     if code not in label_by_code:
                         nm = next((r["name"] for r in crows if str(r["code"]) == code), code)
                         label_by_code[code] = _rendiconto_label(code, nm)
                         order_codes.append(code)
-            base_tot = {name: (sum(vb.values()) or 1) for name, vb in series}
+            # Per-capita needs each comune's population; drop (and note) those without it.
+            if per_capita:
+                missing = [disp for key, disp, _ in series if not pop_by_comune.get(key, {}).get(year)]
+                series = [s for s in series if pop_by_comune.get(s[0], {}).get(year)]
+                if missing:
+                    st.caption("Vista «€ per abitante»: esclusi i comuni senza popolazione "
+                               "caricata (" + ", ".join(missing) + ").")
+            base_tot = {key: (sum(vb.values()) or 1) for key, _disp, vb in series}
             y_labels = [label_by_code[c] for c in order_codes]
             fig = go.Figure()
-            for idx, (name, vb) in enumerate(series):
-                shares = [f"{vb.get(c, 0) / base_tot[name] * 100:.1f}%" for c in order_codes]
-                xs = ([vb.get(c, 0) / base_tot[name] * 100 for c in order_codes] if percent
-                      else [scale_eur(vb.get(c, 0)) for c in order_codes])
+            for idx, (key, disp, vb) in enumerate(series):
+                shares = [f"{vb.get(c, 0) / base_tot[key] * 100:.1f}%" for c in order_codes]
+                xs = ([vb.get(c, 0) / base_tot[key] * 100 for c in order_codes] if percent
+                      else [xval(key, vb.get(c, 0)) for c in order_codes])
                 fig.add_trace(go.Bar(
-                    y=y_labels, x=xs, orientation="h", name=name,
+                    y=y_labels, x=xs, orientation="h", name=disp,
                     marker_color=_PALETTE[idx % len(_PALETTE)],
                     customdata=[[s] for s in shares],
-                    hovertemplate="<b>%{y}</b> · " + name
+                    hovertemplate="<b>%{y}</b> · " + disp
                     + ("<br>%{x:.1f}% del totale" if percent
-                       else "<br>%{x:,.0f} " + eur_unit() + " — %{customdata[0]} del totale")
+                       else "<br>%{x:,.0f} " + unit_lbl + " — %{customdata[0]} del totale")
                     + "<extra></extra>"))
             fig.update_layout(
                 barmode="group", height=max(360, 34 * len(order_codes)),
-                xaxis_title=("% sul totale del comune" if percent else eur_unit()),
+                xaxis_title=("% sul totale del comune" if percent else unit_lbl),
                 yaxis=dict(autorange="reversed"), margin=dict(t=10, b=10),
                 hoverlabel=dict(align="left"), legend=dict(orientation="h", y=-0.10),
                 title=f"{measures[measure]} — {year} · confronto "
                       f"(Torino vs {', '.join(c.title() for c in compare_comuni)})")
-            if not percent:
+            if not percent and not per_capita:
                 st.caption("Suggerimento: attiva «In %» qui sopra per confrontare le "
                            "quote a parità di scala (i totali dei comuni differiscono).")
         else:
             customdata = [[q, _hover_desc(kind, c)] for q, c in zip(df["quota"], df["code"])]
             fig = go.Figure(go.Bar(
-                x=[scale_eur(v) for v in df["value"]], y=df["voce"], orientation="h",
+                x=[xval("TORINO", v) for v in df["value"]], y=df["voce"], orientation="h",
                 text=df["quota"], textposition="auto",
                 marker_color=[_PALETTE[i % len(_PALETTE)] for i in range(len(df))],
                 customdata=customdata,
-                hovertemplate="<b>%{y}</b><br>%{x:,.0f} " + eur_unit()
+                hovertemplate="<b>%{y}</b><br>%{x:,.0f} " + unit_lbl
                 + " — %{customdata[0]} del totale" + "%{customdata[1]}<extra></extra>"))
-            fig.update_layout(height=max(320, 26 * len(df)), xaxis_title=eur_unit(),
+            fig.update_layout(height=max(320, 26 * len(df)), xaxis_title=unit_lbl,
                               yaxis=dict(autorange="reversed"), margin=dict(t=10, b=10),
                               hoverlabel=dict(align="left"),
                               title=f"{measures[measure]} — {year}")

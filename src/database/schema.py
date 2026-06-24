@@ -185,6 +185,18 @@ CREATE TABLE IF NOT EXISTS rendiconto_comuni (
     source   VARCHAR NOT NULL
 );
 
+-- Resident-population series (anagrafe, residenti al 31/12), used to express the
+-- rendiconto figures in euro per abitante. Standalone curated data (like debito):
+-- the source is recorded per row. Keyed by (comune, year) so other comuni can be
+-- added later for a per-capita comparison; currently only Torino is loaded.
+CREATE TABLE IF NOT EXISTS popolazione (
+    comune    VARCHAR NOT NULL DEFAULT 'TORINO',
+    year      INTEGER NOT NULL,
+    residenti INTEGER NOT NULL,
+    source    VARCHAR NOT NULL,
+    PRIMARY KEY (comune, year)
+);
+
 -- The entity-name crosswalk: every raw name seen in any source mapped to its
 -- canonical slug/name. This is the "normalization map" as a queryable object.
 CREATE OR REPLACE VIEW entity_crosswalk AS

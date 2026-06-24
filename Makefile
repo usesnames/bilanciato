@@ -1,4 +1,4 @@
-.PHONY: install ingest load-bdap-rendiconto load-debito load-rendiconto-csv dashboard publish serve-site test lint format clean
+.PHONY: install ingest load-bdap-rendiconto load-bdap-comuni load-debito load-popolazione load-rendiconto-csv dashboard publish serve-site test lint format clean
 
 PY := .venv/bin/python
 PIP := .venv/bin/pip
@@ -12,8 +12,14 @@ ingest:  ## run the ETL over every profiled PDF in uploads/
 load-bdap-rendiconto:  ## (re)load Torino's rendiconto summary 2016-2025 from the BDAP/RGS open-data ZIPs
 	$(PY) -m src.etl.load_bdap_rendiconto
 
+load-bdap-comuni:  ## (re)load the città-metropolitane comparison from the BDAP/RGS ZIPs on disk
+	$(PY) -m src.etl.load_bdap_comuni
+
 load-debito:  ## load the curated municipal-debt series (Collegio dei revisori) into DuckDB
 	$(PY) -m src.etl.load_debito
+
+load-popolazione:  ## load the Comune di Torino resident-population series (for euro per-capita)
+	$(PY) -m src.etl.load_popolazione
 
 load-rendiconto-csv:  ## load a rendiconto from the Formato aperto CSVs (2019, PDF unusable)
 	$(PY) -m src.etl.load_rendiconto_csv

@@ -128,6 +128,24 @@ def test_confronto_comuni_includes_torino_matching_rendiconto():
 
 
 @pytest.mark.skipif(not DB_PATH.exists(), reason="database not built")
+def test_popolazione_loaded_for_torino():
+    """The Torino resident series is loaded (used for euro per-capita) and plausible."""
+    from src.database.queries import Repository
+
+    repo = Repository()
+    try:
+        pop = repo.popolazione("TORINO")
+        if not pop:
+            pytest.skip("population not loaded")
+        years = {int(p["year"]) for p in pop}
+        assert {2015, 2025} <= years
+        # Torino sits around 0.85-0.9 million residents in this period.
+        assert all(800_000 < int(p["residenti"]) < 950_000 for p in pop)
+    finally:
+        repo.close()
+
+
+@pytest.mark.skipif(not DB_PATH.exists(), reason="database not built")
 def test_rendiconto_ingested_and_reconciles():
     from src.database.queries import Repository
 
