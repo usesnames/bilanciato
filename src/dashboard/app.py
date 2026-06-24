@@ -527,39 +527,6 @@ def page_statements():
                        file_name=f"{category}_{year}.csv", mime="text/csv")
 
 
-def page_comparison():
-    st.header("Confronto tra anni")
-    st.caption("Seleziona una voce di bilancio per vederne l'andamento pluriennale.")
-    category = st.selectbox("Prospetto", categories(),
-                            format_func=lambda c: CATEGORY_LABELS.get(c, c))
-    rows = metrics(year=max(years()), category=category, limit=2000)
-    names = sorted({r["metric_name"] for r in rows})
-    if not names:
-        st.info("Nessuna voce disponibile.")
-        return
-    default_idx = next((i for i, n in enumerate(names) if n.startswith("TOTALE")), 0)
-    metric_name = st.selectbox("Voce", names, index=default_idx)
-    pts = [p for p in timeseries(metric_name, category) if p["value"] is not None]
-    if not pts:
-        st.info("Nessun valore numerico per questa voce.")
-        return
-    df = pd.DataFrame(pts).sort_values("year")
-    fig = go.Figure(go.Bar(x=df["year"], y=[scale_eur(v) for v in df["value"]],
-                           text=[fmt_eur(v) for v in df["value"]], textposition="auto"))
-    fig.update_layout(title=metric_name, height=380, yaxis_title=eur_unit(), xaxis=dict(dtick=1))
-    st.plotly_chart(fig, use_container_width=True)
-    if len(df) > 1:
-        first, last = df.iloc[0], df.iloc[-1]
-        if first["value"]:
-            delta = (last["value"] - first["value"]) / first["value"] * 100
-            st.metric(f"Variazione {int(first['year'])} -> {int(last['year'])}",
-                      fmt_eur(last["value"] - first["value"]), f"{delta:+.1f}%")
-    st.subheader("Fonti")
-    st.dataframe(
-        df[["year", "value", "source_document", "source_page"]].rename(
-            columns={"year": "anno", "value": "valore", "source_page": "pag."}),
-        use_container_width=True, hide_index=True)
-
 
 def page_entities():
     st.header("Esplora le partecipate")
@@ -1291,7 +1258,6 @@ def page_open_data():
 
 PAGES = {
     "Prospetti di bilancio": page_statements,
-    "Confronto tra anni": page_comparison,
     "Esplora le partecipate": page_entities,
     "Rendiconto della gestione": page_rendiconto,
     "Debito del Comune": page_debito,
@@ -1301,7 +1267,6 @@ PAGES = {
 
 def main():
     repo = get_repo()
-    yrs = repo.years()
     st.sidebar.title("📊 bilanciaTo")
     st.sidebar.caption("Bilancio Consolidato - Comune di Torino")
     choice = st.sidebar.radio("Sezioni", list(PAGES))
@@ -1309,8 +1274,6 @@ def main():
     st.sidebar.toggle(
         "Valori in milioni di €", key="in_millions",
         help="Esprime tutti gli importi in milioni di euro, riducendo le cifre.")
-    st.sidebar.metric("Documenti", len(repo.documents()))
-    st.sidebar.write("Anni: " + ", ".join(str(y) for y in yrs))
     PAGES[choice]()
 
 

@@ -60,8 +60,10 @@ DEBITO_MEASURES: dict[str, tuple[str, str]] = {
 }
 
 # Per-year figures, transcribed verbatim. ``None``/absent = not printed in the
-# source table for that year (abitanti/pro-capite are missing for 2021-2022, whose
-# relazione screenshot was cropped before those rows).
+# source table for that year. Exception: abitanti/pro-capite for 2021-2022 were
+# missing (relazione screenshot cropped); they are derived from the popolazione
+# table (Torino anagrafe, using 31/12 of the preceding year, consistent with all
+# other years where this convention is verifiable).
 _PER_YEAR: dict[int, dict[str, str]] = {
     2018: {
         "residuo_iniziale": "2824735021.48", "nuovi_prestiti": "16638609.39",
@@ -85,11 +87,18 @@ _PER_YEAR: dict[int, dict[str, str]] = {
         "residuo_iniziale": "2579249293.11", "nuovi_prestiti": "29866374.83",
         "prestiti_rimborsati": "95106421.31", "debito_fine_anno": "2512382937.30",
         "oneri_finanziari": "67633736.85",
+        # abitanti/pro-capite were missing (relazione screenshot cropped); derived
+        # from the popolazione table (Torino anagrafe 2020 = 866510, matching the
+        # convention of all other years: use the 31/12 of the preceding year).
+        "abitanti": "866510", "debito_pro_capite": "2899.43",
     },
     2022: {
         "residuo_iniziale": "2512382937.30", "nuovi_prestiti": "10500000.00",
         "prestiti_rimborsati": "109548971.97", "debito_fine_anno": "2413333965.80",
         "oneri_finanziari": "64205241.09",
+        # abitanti/pro-capite derived from popolazione table (Torino anagrafe 2021
+        # = 861636).
+        "abitanti": "861636", "debito_pro_capite": "2800.87",
     },
     2023: {
         "residuo_iniziale": "2413333965.80", "nuovi_prestiti": "9998667.20",
