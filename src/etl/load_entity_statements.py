@@ -26,10 +26,15 @@ from decimal import Decimal
 
 import pdfplumber
 
+from src.etl.curated_iren import curated_items as _iren_curated
 from src.normalization import entity_statements as es
 from src.utils.config import UPLOADS
 
 PARTECIPATE_DIR = UPLOADS / "partecipate"
+
+# Entities whose figures are hand-curated (transcribed + verified) rather than
+# parsed: their PDFs are too irregular for the generic coordinate parser.
+CURATED = {"iren": _iren_curated}
 
 
 @dataclass
@@ -82,6 +87,8 @@ def _words(pdf, pages: tuple[int, ...]) -> dict[int, list[dict]]:
 
 
 def _parse(fasc: EntityFascicolo) -> list[es.StatementItem]:
+    if fasc.slug in CURATED:
+        return CURATED[fasc.slug](fasc)
     path = PARTECIPATE_DIR / fasc.filename
     items: list[es.StatementItem] = []
     with pdfplumber.open(path) as pdf:

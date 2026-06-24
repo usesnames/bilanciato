@@ -454,6 +454,9 @@ STATEMENT_CATEGORIES = [
     ("conto_economico", "Conto economico"),
 ]
 
+# Entities shown as IAS/IFRS *consolidated* group statements (not civil-code).
+IFRS_CONSOLIDATED = {"iren"}
+
 _RP_BADGE = {
     "socio": ("socio", "Rapporto con il socio unico Città di Torino"),
     "gruppo_socio": ("gruppo", "Imprese sottoposte al controllo del socio (gruppo Città di Torino)"),
@@ -554,17 +557,25 @@ def _render_rapporti_socio(slug: str, years) -> None:
 
 
 def page_entity_statements(slug: str, display_name: str) -> None:
-    """Render the partecipata's civil-code SP + CE (latest two years)."""
+    """Render the partecipata's SP + CE (latest two years)."""
     syrs = entity_statement_years(slug)
     if not syrs:
         return
     years = syrs[:2]  # show only the latest two (e.g. 2024, 2023)
-    st.subheader("Bilancio d'esercizio (schema civilistico)")
-    st.caption(
-        f"Stato patrimoniale e conto economico di {display_name} dal fascicolo di "
-        f"bilancio depositato, schema ex artt. 2424/2425 c.c. Esercizi "
-        f"{years[-1]}-{years[0]}. Le voci evidenziate sono **rapporti con il socio "
-        f"Città di Torino**.")
+    if slug in IFRS_CONSOLIDATED:
+        st.subheader("Bilancio consolidato di Gruppo (schema IAS/IFRS)")
+        st.caption(
+            f"Stato patrimoniale e conto economico **consolidati** del {display_name} "
+            f"(capogruppo + controllate), schema IAS/IFRS, esercizi "
+            f"{years[-1]}-{years[0]}. Le voci evidenziate sono **rapporti con il socio "
+            f"Città di Torino**.")
+    else:
+        st.subheader("Bilancio d'esercizio (schema civilistico)")
+        st.caption(
+            f"Stato patrimoniale e conto economico di {display_name} dal fascicolo di "
+            f"bilancio depositato, schema ex artt. 2424/2425 c.c. Esercizi "
+            f"{years[-1]}-{years[0]}. Le voci evidenziate sono **rapporti con il socio "
+            f"Città di Torino**.")
     _render_rapporti_socio(slug, years)
     hide_zero = st.toggle(
         "Nascondi voci a zero", value=True, key=f"stmt_zero_{slug}",
