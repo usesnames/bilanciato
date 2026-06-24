@@ -1,4 +1,4 @@
-"""Load the civil-code statements (SP + CE) of the most important partecipate from
+"""Load the financial statements (SP + CE) of the most important partecipate from
 their deposited *fascicolo di bilancio* PDFs in ``uploads/partecipate/``.
 
 Each partecipata is described by an ``EntityFascicolo``: which PDF, which pages
@@ -42,6 +42,8 @@ class EntityFascicolo:
     attivo_pages: tuple[int, ...]
     passivo_pages: tuple[int, ...]
     conto_economico_pages: tuple[int, ...]
+    ifrs: bool = False                      # True → IAS/IFRS layout
+    rapporti_pages: tuple[int, ...] = ()    # related-party supplement pages (IFRS only)
 
 
 # Configured partecipate. Pages are 1-based, as printed in the fascicolo.
@@ -55,6 +57,17 @@ FASCICOLI: list[EntityFascicolo] = [
         passivo_pages=(82,),
         conto_economico_pages=(83, 84),
     ),
+    EntityFascicolo(
+        slug="iren",
+        name="Iren S.p.A.",
+        filename="Relazione Annuale Integrata 2024.pdf",
+        year=2024, prev_year=2023,
+        attivo_pages=(426,),
+        passivo_pages=(427,),
+        conto_economico_pages=(428,),
+        ifrs=True,
+        rapporti_pages=(488, 489),
+    ),
 ]
 
 
@@ -66,14 +79,32 @@ def _parse(fasc: EntityFascicolo) -> list[es.StatementItem]:
     path = PARTECIPATE_DIR / fasc.filename
     items: list[es.StatementItem] = []
     with pdfplumber.open(path) as pdf:
-        for category, pages in (
-            (es.ATTIVO, fasc.attivo_pages),
-            (es.PASSIVO, fasc.passivo_pages),
-            (es.CONTO_ECONOMICO, fasc.conto_economico_pages),
-        ):
-            items += es.normalize_statement(
-                _words(pdf, pages), category,
-                year=fasc.year, prev_year=fasc.prev_year)
+        if fasc.ifrs:
+            for category, pages in (
+                (es.ATTIVO, fasc.attivo_pages),
+                (es.PASSIVO, fasc.passivo_pages),
+                (es.CONTO_ECONOMICO, fasc.conto_economico_pages),
+            ):
+                items += es.normalize_statement_ifrs(
+                    _words(pdf, pages), category,
+                    year=fasc.year, prev_year=fasc.prev_year)
+            # Related-party supplement: only the current year is shown
+            if fasc.rapporti_pages:
+                p488 = {p: pdf.pages[p - 1].extract_words()
+                        for p in fasc.rapporti_pages if p == 488}
+                p489 = {p: pdf.pages[p - 1].extract_words()
+                        for p in fasc.rapporti_pages if p == 489}
+                items += es.normalize_rapporti_ifrs(
+                    p488, p489, year=fasc.year)
+        else:
+            for category, pages in (
+                (es.ATTIVO, fasc.attivo_pages),
+                (es.PASSIVO, fasc.passivo_pages),
+                (es.CONTO_ECONOMICO, fasc.conto_economico_pages),
+            ):
+                items += es.normalize_statement(
+                    _words(pdf, pages), category,
+                    year=fasc.year, prev_year=fasc.prev_year)
     return items
 
 
@@ -82,21 +113,37 @@ def _validate(fasc: EntityFascicolo, items: list[es.StatementItem]) -> list[str]
     def find(category: str, year: int, pred) -> Decimal | None:
         return next((i.value for i in items
                      if i.category == category and i.year == year
+                     and i.related_party is None
                      and pred(i.name.replace(" ", "").upper())), None)
 
     problems: list[str] = []
     for yr in (fasc.year, fasc.prev_year):
-        ta = find(es.ATTIVO, yr, lambda n: n == "TOTALEATTIVO")
-        tp = find(es.PASSIVO, yr, lambda n: n.startswith("TOTALEPASSIVOENET"))
-        if ta is None or tp is None:
-            problems.append(f"{yr}: totale attivo/passivo non trovato ({ta} / {tp})")
-        elif ta != tp:
-            problems.append(f"{yr}: attivo {ta} != passivo {tp}")
-        ce = find(es.CONTO_ECONOMICO, yr,
-                  lambda n: n.startswith("21)UTILE") or "UTILE(PERDITA)DELL'ESER" in n)
-        sp = find(es.PASSIVO, yr, lambda n: "UTILE(PERDITA)D'ESERCIZIO" in n)
-        if ce is not None and sp is not None and ce != sp:
-            problems.append(f"{yr}: utile CE {ce} != utile SP {sp}")
+        if fasc.ifrs:
+            ta = find(es.ATTIVO,  yr, lambda n: "TOTALEATTIVITA" in n)
+            tp = find(es.PASSIVO, yr, lambda n: "TOTALEPATRIMONIO" in n and "PASSIVITA" in n)
+            if ta is None or tp is None:
+                problems.append(f"{yr}: totale attivo/passivo non trovato ({ta} / {tp})")
+            elif ta != tp:
+                problems.append(f"{yr}: attivo {ta} != passivo {tp}")
+            ce = find(es.CONTO_ECONOMICO, yr,
+                      lambda n: "RISULTATONETTO" in n and "PERIODO" in n
+                                and "ATTIVITA" not in n)
+            sp = find(es.PASSIVO, yr,
+                      lambda n: "RISULTATONETTO" in n and "PERIODO" in n)
+            if ce is not None and sp is not None and ce != sp:
+                problems.append(f"{yr}: risultato netto CE {ce} != SP {sp}")
+        else:
+            ta = find(es.ATTIVO, yr, lambda n: n == "TOTALEATTIVO")
+            tp = find(es.PASSIVO, yr, lambda n: n.startswith("TOTALEPASSIVOENET"))
+            if ta is None or tp is None:
+                problems.append(f"{yr}: totale attivo/passivo non trovato ({ta} / {tp})")
+            elif ta != tp:
+                problems.append(f"{yr}: attivo {ta} != passivo {tp}")
+            ce = find(es.CONTO_ECONOMICO, yr,
+                      lambda n: n.startswith("21)UTILE") or "UTILE(PERDITA)DELL'ESER" in n)
+            sp = find(es.PASSIVO, yr, lambda n: "UTILE(PERDITA)D'ESERCIZIO" in n)
+            if ce is not None and sp is not None and ce != sp:
+                problems.append(f"{yr}: utile CE {ce} != utile SP {sp}")
     return problems
 
 
