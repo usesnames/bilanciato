@@ -27,6 +27,7 @@ from decimal import Decimal
 import pdfplumber
 
 from src.etl.curated_iren import curated_items as _iren_curated
+from src.etl.curated_smat import curated_items as _smat_curated
 from src.normalization import entity_statements as es
 from src.utils.config import UPLOADS
 
@@ -34,7 +35,7 @@ PARTECIPATE_DIR = UPLOADS / "partecipate"
 
 # Entities whose figures are hand-curated (transcribed + verified) rather than
 # parsed: their PDFs are too irregular for the generic coordinate parser.
-CURATED = {"iren": _iren_curated}
+CURATED = {"iren": _iren_curated, "smat": _smat_curated}
 
 
 @dataclass
@@ -78,6 +79,20 @@ FASCICOLI: list[EntityFascicolo] = [
         consolidated=True,
         rapporti_pages=(412, 413),
         rapporti_entity="Comune Torino",
+    ),
+    EntityFascicolo(
+        slug="smat",
+        name="SMAT S.p.A. e suo Gruppo",
+        filename="BILANCIO-SMAT-31-12-2024-light.pdf",
+        year=2024, prev_year=2023,
+        attivo_pages=(149,),
+        passivo_pages=(150,),
+        conto_economico_pages=(151,),
+        ifrs=True,
+        migliaia=1,
+        consolidated=True,
+        rapporti_pages=(192,),
+        rapporti_entity="Città di Torino",
     ),
 ]
 
@@ -140,8 +155,12 @@ def _validate(fasc: EntityFascicolo, items: list[es.StatementItem]) -> list[str]
     problems: list[str] = []
     for yr in (fasc.year, fasc.prev_year):
         if fasc.ifrs:
-            ta = find(es.ATTIVO,  yr, lambda n: "TOTALEATTIVITA" in n)
-            tp = find(es.PASSIVO, yr, lambda n: "TOTALEPATRIMONIO" in n and "PASSIVITA" in n)
+            # Grand total only: "TOTALE ATTIVIT(A'|À)", never the "non correnti"
+            # / "correnti" subtotals. "PASSIVIT" (no trailing A) is accent-safe.
+            ta = find(es.ATTIVO,  yr,
+                      lambda n: n.startswith("TOTALEATTIV") and "CORRENTI" not in n)
+            tp = find(es.PASSIVO, yr,
+                      lambda n: "PATRIMONIO" in n and "PASSIVIT" in n)
             if ta is None or tp is None:
                 problems.append(f"{yr}: totale attivo/passivo non trovato ({ta} / {tp})")
             elif ta != tp:

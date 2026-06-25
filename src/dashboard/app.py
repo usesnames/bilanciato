@@ -440,7 +440,7 @@ STATEMENT_CATEGORIES = [
 ]
 
 # Entities shown as IAS/IFRS *consolidated* group statements (not civil-code).
-IFRS_CONSOLIDATED = {"iren"}
+IFRS_CONSOLIDATED = {"iren", "smat"}
 
 _RP_BADGE = {
     "socio": ("socio", "Rapporto con il socio unico Città di Torino"),
@@ -703,7 +703,12 @@ def page_entities():
 
     em = entity_metrics(slug)
     if em:
-        st.subheader("Tutti i dati per entità (personale, valutazione partecipazione)")
+        st.subheader("Dati di dettaglio dal bilancio consolidato del Comune di Torino")
+        st.caption(
+            "Indicatori aggiuntivi su questa partecipata (personale, valutazione "
+            "della partecipazione, % di consolidamento) tratti dagli allegati al "
+            "**bilancio consolidato del Comune di Torino**, non dal bilancio della "
+            "società.")
         dfm = pd.DataFrame(em)
         dfm["valore"] = [fmt_value(v, u) for v, u in zip(dfm["value"], dfm["unit"])]
         dfm["indicatore"] = dfm["metric_name"].map(metric_label)
