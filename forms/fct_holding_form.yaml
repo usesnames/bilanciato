@@ -1,0 +1,112 @@
+# =============================================================================
+# FORM — Bilancio CONSOLIDATO FCT Holding S.p.A. al 31/12/2024
+# Schema civilistico (D.Lgs 127/91, artt. 2424/2425 c.c.)
+# Fonte: FCT_B.consolidato_31.12.2024.pdf (scansione)
+# =============================================================================
+#
+# ISTRUZIONI
+# ----------
+# 1. Per ogni voce inserisci gli importi dopo `v2024:` e `v2023:`.
+# 2. Scrivi il numero PURO in euro, SENZA separatori delle migliaia:
+#       giusto:   v2024: 1234567
+#       sbagliato: v2024: 1.234.567
+#    I valori negativi (tra parentesi nel bilancio) col segno meno: v2024: -1234
+# 3. Le voci che NON compaiono nella scansione: lascia i campi vuoti
+#    (es. `v2024:` senza nulla dopo). Le righe vuote in entrambi gli anni
+#    vengono semplicemente ignorate.
+# 4. Se nella scansione c'è una voce che qui manca, aggiungila copiando il
+#    formato di una riga (puoi cambiare anche `name`). Non toccare `total:`.
+# 5. Quando hai finito, salva e dimmelo: faccio girare il loader e verifico
+#    la quadratura (TOTALE ATTIVO == TOTALE PASSIVO).
+#
+# `total: true` marca i (sub)totali (in grassetto nella dashboard) — già
+# impostato dove serve, non modificarlo.
+
+entity:
+  slug: fct_holding
+  name: FCT Holding S.p.A. (consolidato — Gruppo GTT)
+  source_document: FCT_B.consolidato_31.12.2024.pdf
+  year: 2024
+  prev_year: 2023
+
+# -----------------------------------------------------------------------------
+# STATO PATRIMONIALE — ATTIVO
+# -----------------------------------------------------------------------------
+stato_patrimoniale_attivo:
+  - {code: "A",      total: false, name: "A) Crediti verso soci per versamenti ancora dovuti", v2024: , v2023: }
+
+  - {code: "B.I",    total: false, name: "B.I) Immobilizzazioni immateriali", v2024: , v2023: }
+  - {code: "",       total: false, name: "    di cui differenza da consolidamento / avviamento", v2024: , v2023: }
+  - {code: "B.II",   total: false, name: "B.II) Immobilizzazioni materiali", v2024: , v2023: }
+  - {code: "B.III",  total: false, name: "B.III) Immobilizzazioni finanziarie", v2024: , v2023: }
+  - {code: "B",      total: true,  name: "Totale immobilizzazioni (B)", v2024: , v2023: }
+
+  - {code: "C.I",    total: false, name: "C.I) Rimanenze", v2024: , v2023: }
+  - {code: "C.II",   total: false, name: "C.II) Crediti", v2024: , v2023: }
+  - {code: "",       total: false, name: "    di cui crediti verso Comune di Torino (controllante)", v2024: , v2023: }
+  - {code: "C.III",  total: false, name: "C.III) Attività finanziarie non immobilizzate", v2024: , v2023: }
+  - {code: "C.IV",   total: false, name: "C.IV) Disponibilità liquide", v2024: , v2023: }
+  - {code: "C",      total: true,  name: "Totale attivo circolante (C)", v2024: , v2023: }
+
+  - {code: "D",      total: false, name: "D) Ratei e risconti attivi", v2024: , v2023: }
+
+  - {code: "",       total: true,  name: "TOTALE ATTIVO", v2024: , v2023: }
+
+# -----------------------------------------------------------------------------
+# STATO PATRIMONIALE — PASSIVO (incl. patrimonio netto)
+# -----------------------------------------------------------------------------
+stato_patrimoniale_passivo:
+  # --- Patrimonio netto di gruppo ---
+  - {code: "A",      total: false, name: "A) Patrimonio netto - Capitale", v2024: , v2023: }
+  - {code: "",       total: false, name: "    Riserva da sovrapprezzo / rivalutazione", v2024: , v2023: }
+  - {code: "",       total: false, name: "    Riserva legale", v2024: , v2023: }
+  - {code: "",       total: false, name: "    Altre riserve e utili (perdite) a nuovo", v2024: , v2023: }
+  - {code: "",       total: false, name: "    Riserva di consolidamento", v2024: , v2023: }
+  - {code: "",       total: false, name: "    Utile (perdita) dell'esercizio di gruppo", v2024: , v2023: }
+  - {code: "",       total: true,  name: "Totale patrimonio netto di gruppo", v2024: , v2023: }
+  # --- Quota di terzi (minoranze) ---
+  - {code: "",       total: false, name: "    Capitale e riserve di terzi", v2024: , v2023: }
+  - {code: "",       total: false, name: "    Utile (perdita) dell'esercizio di pertinenza di terzi", v2024: , v2023: }
+  - {code: "",       total: true,  name: "Totale patrimonio netto consolidato", v2024: , v2023: }
+
+  - {code: "B",      total: false, name: "B) Fondi per rischi e oneri", v2024: , v2023: }
+  - {code: "C",      total: false, name: "C) Trattamento di fine rapporto di lavoro subordinato", v2024: , v2023: }
+
+  - {code: "D",      total: false, name: "D) Debiti", v2024: , v2023: }
+  - {code: "",       total: false, name: "    di cui debiti verso banche", v2024: , v2023: }
+  - {code: "",       total: false, name: "    di cui debiti verso Comune di Torino (controllante)", v2024: , v2023: }
+
+  - {code: "E",      total: false, name: "E) Ratei e risconti passivi", v2024: , v2023: }
+
+  - {code: "",       total: true,  name: "TOTALE PASSIVO", v2024: , v2023: }
+
+# -----------------------------------------------------------------------------
+# CONTO ECONOMICO
+# -----------------------------------------------------------------------------
+conto_economico:
+  - {code: "A.1",    total: false, name: "A.1) Ricavi delle vendite e delle prestazioni", v2024: , v2023: }
+  - {code: "",       total: false, name: "A.4) Incrementi di immobilizzazioni per lavori interni", v2024: , v2023: }
+  - {code: "",       total: false, name: "A.5) Altri ricavi e proventi", v2024: , v2023: }
+  - {code: "",       total: false, name: "    di cui contributi in conto esercizio", v2024: , v2023: }
+  - {code: "A",      total: true,  name: "Totale valore della produzione (A)", v2024: , v2023: }
+
+  - {code: "B.6",    total: false, name: "B.6) Costi per materie prime, sussidiarie, di consumo e merci", v2024: , v2023: }
+  - {code: "B.7",    total: false, name: "B.7) Costi per servizi", v2024: , v2023: }
+  - {code: "B.8",    total: false, name: "B.8) Costi per godimento di beni di terzi", v2024: , v2023: }
+  - {code: "B.9",    total: false, name: "B.9) Costi per il personale", v2024: , v2023: }
+  - {code: "B.10",   total: false, name: "B.10) Ammortamenti e svalutazioni", v2024: , v2023: }
+  - {code: "B.11",   total: false, name: "B.11) Variazioni delle rimanenze", v2024: , v2023: }
+  - {code: "B.12",   total: false, name: "B.12) Accantonamenti per rischi", v2024: , v2023: }
+  - {code: "B.14",   total: false, name: "B.14) Oneri diversi di gestione", v2024: , v2023: }
+  - {code: "B",      total: true,  name: "Totale costi della produzione (B)", v2024: , v2023: }
+
+  - {code: "",       total: true,  name: "Differenza tra valore e costi della produzione (A-B)", v2024: , v2023: }
+
+  - {code: "C",      total: true,  name: "C) Totale proventi e oneri finanziari (15+16-17+/-17bis)", v2024: , v2023: }
+  - {code: "D",      total: true,  name: "D) Totale rettifiche di valore di attività finanziarie (18-19)", v2024: , v2023: }
+
+  - {code: "",       total: true,  name: "Risultato prima delle imposte", v2024: , v2023: }
+  - {code: "20",     total: false, name: "20) Imposte sul reddito dell'esercizio", v2024: , v2023: }
+  - {code: "21",     total: true,  name: "21) Utile (perdita) dell'esercizio (consolidato)", v2024: , v2023: }
+  - {code: "",       total: false, name: "    - di cui di pertinenza di terzi", v2024: , v2023: }
+  - {code: "",       total: false, name: "    - di cui di pertinenza del gruppo", v2024: , v2023: }
