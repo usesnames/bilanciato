@@ -147,21 +147,6 @@ def entity_metrics(slug: str, year: int | None = None):
 
 
 @st.cache_data(ttl=300)
-def entity_metric_timeseries(slug: str, metric_name: str):
-    return get_repo().entity_metric_timeseries(slug, metric_name)
-
-
-@st.cache_data(ttl=300)
-def entity_metrics_multiyear(slug: str):
-    return get_repo().entity_metrics_multiyear(slug)
-
-
-@st.cache_data(ttl=300)
-def entities_with_metric(metric_name: str):
-    return get_repo().entities_with_metric(metric_name)
-
-
-@st.cache_data(ttl=300)
 def entity_statement_years(slug: str):
     return get_repo().entity_statement_years(slug)
 
@@ -716,59 +701,6 @@ def page_entities():
     # -- civil-code statements (SP + CE) from the deposited fascicolo ---------
     page_entity_statements(slug, choice)
 
-    # -- multi-year comparison of a per-entity metric -------------------------
-    multiyear = entity_metrics_multiyear(slug)
-    if multiyear:
-        st.subheader("Andamento pluriennale")
-        st.caption("Confronto tra anni per le metriche disponibili su più esercizi.")
-        default_idx = multiyear.index("spesa_personale") if "spesa_personale" in multiyear else 0
-        metric_name = st.selectbox(
-            "Metrica", multiyear, index=default_idx, format_func=metric_label, key="ent_metric"
-        )
-        unit = "PCT" if metric_name in {
-            "perc_consolidamento", "incidenza_ricavi_comune", "quota_posseduta"} else "EUR"
-
-        # optional cross-entity overlay
-        others = [e for e in entities_with_metric(metric_name) if e["canonical_slug"] != slug]
-        other_names = {e["canonical_name"]: e["canonical_slug"] for e in others}
-        compare = st.multiselect(
-            "Confronta con altre partecipate", list(other_names),
-            help="Sovrapponi l'andamento di altre entità sulla stessa metrica.")
-
-        fig = go.Figure()
-        all_pts = []
-        for label_name, s in [(choice, slug)] + [(n, other_names[n]) for n in compare]:
-            pts = [p for p in entity_metric_timeseries(s, metric_name) if p["value"] is not None]
-            if not pts:
-                continue
-            d = pd.DataFrame(pts).sort_values("year")
-            all_pts.append((label_name, d))
-            yvals = d["value"] if unit == "PCT" else [scale_eur(v) for v in d["value"]]
-            fig.add_trace(go.Scatter(
-                x=d["year"], y=yvals, mode="lines+markers", name=label_name))
-        if all_pts:
-            ytitle = "%" if unit == "PCT" else eur_unit()
-            fig.update_layout(title=metric_label(metric_name), height=380,
-                              yaxis_title=ytitle, xaxis=dict(dtick=1),
-                              legend=dict(orientation="h", y=-0.2))
-            st.plotly_chart(fig, use_container_width=True)
-
-            base = all_pts[0][1]
-            if len(base) > 1:
-                first, last = base.iloc[0], base.iloc[-1]
-                delta_txt = "-"
-                if first["value"]:
-                    pct = (last["value"] - first["value"]) / abs(first["value"]) * 100
-                    delta_txt = f"{pct:+.1f}%"
-                st.metric(
-                    f"{choice}: variazione {int(first['year'])} → {int(last['year'])}",
-                    fmt_value(last["value"] - first["value"], unit), delta_txt)
-
-            with st.expander("Fonti"):
-                src = base[["year", "value", "source_document", "source_page"]].rename(
-                    columns={"year": "anno", "value": "valore", "source_page": "pag."})
-                st.dataframe(src, use_container_width=True, hide_index=True)
-
     em = entity_metrics(slug)
     if em:
         st.subheader("Tutti i dati per entità (personale, valutazione partecipazione)")
@@ -1054,9 +986,7 @@ def page_rendiconto():
         "registra, per ogni *missione* di spesa e *titolo* di entrata, gli stanziamenti "
         "(previsioni), gli **impegni**/**accertamenti** (competenza, cioè ciò che è "
         "stato giuridicamente obbligato o accertato nell'anno) e i **pagamenti**/"
-        "**riscossioni** (cassa, cioè il denaro effettivamente movimentato). È un "
-        "documento diverso dal bilancio consolidato: lì si misurano ricavi e costi di "
-        "competenza economica dell'intero Gruppo (Comune + partecipate)."
+        "**riscossioni** (cassa, cioè il denaro effettivamente movimentato)."
     )
 
     yrs = rendiconto_years()
@@ -1074,9 +1004,6 @@ def page_rendiconto():
              "(impegni/accertamenti) = obbligazioni sorte nell'anno · **Cassa** "
              "(pagamenti/riscossioni) = denaro effettivamente movimentato.")
     percent = c3.toggle("In %", help="Mostra la quota percentuale di ciascuna voce sul totale annuo.")
-    with st.expander("Cosa indicano previsioni, competenza e cassa?"):
-        for m, lbl in measures.items():
-            st.markdown(f"- **{lbl}** — {helps[m]}")
 
     # -- optional exclusion of voci + percentage base --------------------------
     rows = rendiconto(kind=kind, measure=measure)
@@ -1145,9 +1072,6 @@ def page_rendiconto():
         saldo = inc["value"] - pag["value"]
         m3.metric(f"Saldo di cassa {latest}", fmt_pc(saldo, latest),
                   help="Riscossioni meno pagamenti totali (competenza + residui).")
-        st.caption(
-            f"Fonte: {inc['source_document']}, pag. {inc['source_page']} (entrate) e "
-            f"pag. {pag['source_page']} (spese).")
 
     # -- multi-year stacked composition ----------------------------------------
     st.subheader(f"Composizione nel tempo · {measures[measure]}")
@@ -1270,14 +1194,6 @@ def page_debito():
     if not debito_years():
         st.info("Nessun dato sul debito caricato. Esegui `python -m src.etl.load_debito`.")
         return
-    st.info(
-        "**Debito del Comune di Torino** — è il debito finanziario dell'ente "
-        "(mutui e prestiti). È una cosa diversa sia dal **bilancio consolidato** "
-        "(che fotografa attività e passività dell'intero Gruppo, partecipate "
-        "comprese) sia dal **rendiconto della gestione** (entrate e spese dell'anno): "
-        "qui si guarda solo a quanto il Comune deve restituire e a quanto gli costa "
-        "in interessi."
-    )
     st.caption(
         "Dati 2018-2025 trascritti dalle tabelle delle **Relazioni del Collegio dei "
         "revisori dei conti** del Comune di Torino (evoluzione dell'indebitamento e "
