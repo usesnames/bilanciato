@@ -33,80 +33,83 @@ entity:
 # STATO PATRIMONIALE — ATTIVO
 # -----------------------------------------------------------------------------
 stato_patrimoniale_attivo:
-  - {code: "A",      total: false, name: "A) Crediti verso soci per versamenti ancora dovuti", v2024: , v2023: }
+  - {code: "A",      total: false, name: "A) Crediti verso soci per versamenti ancora dovuti", v2024: 0, v2023: 0}
 
-  - {code: "B.I",    total: false, name: "B.I) Immobilizzazioni immateriali", v2024: , v2023: }
+  - {code: "B.I",    total: false, name: "B.I) Immobilizzazioni immateriali", v2024: 2786000, v2023: 2867000}
   - {code: "",       total: false, name: "    di cui differenza da consolidamento / avviamento", v2024: , v2023: }
-  - {code: "B.II",   total: false, name: "B.II) Immobilizzazioni materiali", v2024: , v2023: }
-  - {code: "B.III",  total: false, name: "B.III) Immobilizzazioni finanziarie", v2024: , v2023: }
-  - {code: "B",      total: true,  name: "Totale immobilizzazioni (B)", v2024: , v2023: }
+  - {code: "B.II",   total: false, name: "B.II) Immobilizzazioni materiali", v2024: 493369000, v2023: 450843000}
+  - {code: "B.III",  total: false, name: "B.III) Immobilizzazioni finanziarie", v2024: 396664000, v2023: 412370000}
+  - {code: "B",      total: true,  name: "Totale immobilizzazioni (B)", v2024: 892819000, v2023: 866080000}
 
-  - {code: "C.I",    total: false, name: "C.I) Rimanenze", v2024: , v2023: }
-  - {code: "C.II",   total: false, name: "C.II) Crediti", v2024: , v2023: }
-  - {code: "",       total: false, name: "    di cui crediti verso Comune di Torino (controllante)", v2024: , v2023: }
-  - {code: "C.III",  total: false, name: "C.III) Attività finanziarie non immobilizzate", v2024: , v2023: }
-  - {code: "C.IV",   total: false, name: "C.IV) Disponibilità liquide", v2024: , v2023: }
-  - {code: "C",      total: true,  name: "Totale attivo circolante (C)", v2024: , v2023: }
+  - {code: "C.I",    total: false, name: "C.I) Rimanenze", v2024: 23927000, v2023: 23648000}
+  - {code: "C.II",   total: false, name: "C.II) Crediti", v2024: 170791000, v2023: 199991000}
+  - {code: "",       total: false, name: "    di cui crediti verso Comune di Torino (controllante)", v2024: 22060000, v2023: 27032000}
+  - {code: "C.III",  total: false, name: "C.III) Attività finanziarie non immobilizzate", v2024: 2000, v2023: 868000}
+  - {code: "C.IV",   total: false, name: "C.IV) Disponibilità liquide", v2024: 118194000, v2023: 109996000}
+  - {code: "C",      total: true,  name: "Totale attivo circolante (C)", v2024: 312914000, v2023: 334503000}
 
-  - {code: "D",      total: false, name: "D) Ratei e risconti attivi", v2024: , v2023: }
+  - {code: "D",      total: false, name: "D) Ratei e risconti attivi", v2024: 1128000, v2023: 1415000}
 
-  - {code: "",       total: true,  name: "TOTALE ATTIVO", v2024: , v2023: }
+  - {code: "",       total: true,  name: "TOTALE ATTIVO", v2024: 1206861000, v2023: 1201998000}
 
 # -----------------------------------------------------------------------------
 # STATO PATRIMONIALE — PASSIVO (incl. patrimonio netto)
 # -----------------------------------------------------------------------------
 stato_patrimoniale_passivo:
   # --- Patrimonio netto di gruppo ---
-  - {code: "A",      total: false, name: "A) Patrimonio netto - Capitale", v2024: , v2023: }
-  - {code: "",       total: false, name: "    Riserva da sovrapprezzo / rivalutazione", v2024: , v2023: }
-  - {code: "",       total: false, name: "    Riserva legale", v2024: , v2023: }
-  - {code: "",       total: false, name: "    Altre riserve e utili (perdite) a nuovo", v2024: , v2023: }
+  - {code: "A",      total: false, name: "A) Patrimonio netto - Capitale", v2024: 250000000, v2023: 250000000}
+  - {code: "",       total: false, name: "    Riserva da sovrapprezzo delle azioni", v2024: 758000, v2023: 758000}
+  - {code: "",       total: false, name: "    Riserva legale", v2024: 13767000, v2023: 12627000}
+  - {code: "",       total: false, name: "    Altre riserve", v2024: 260875000, v2023: 260644000}
+  - {code: "",       total: false, name: "    Riserva per operazioni di copertura dei flussi finanziari attesi", v2024: -19000, v2023: -38000}
+  - {code: "",       total: false, name: "    Utili (perdite) a nuovo", v2024: -73720000, v2023: -78585000}
   - {code: "",       total: false, name: "    Riserva di consolidamento", v2024: , v2023: }
-  - {code: "",       total: false, name: "    Utile (perdita) dell'esercizio di gruppo", v2024: , v2023: }
-  - {code: "",       total: true,  name: "Totale patrimonio netto di gruppo", v2024: , v2023: }
+  - {code: "",       total: false, name: "    Utile (perdita) dell'esercizio di gruppo", v2024: 26315000, v2023: 27221000}
+  - {code: "",       total: true,  name: "Totale patrimonio netto di gruppo", v2024: 477976000, v2023: 472627000}
   # --- Quota di terzi (minoranze) ---
   - {code: "",       total: false, name: "    Capitale e riserve di terzi", v2024: , v2023: }
   - {code: "",       total: false, name: "    Utile (perdita) dell'esercizio di pertinenza di terzi", v2024: , v2023: }
-  - {code: "",       total: true,  name: "Totale patrimonio netto consolidato", v2024: , v2023: }
+  - {code: "",       total: true,  name: "Totale patrimonio netto consolidato", v2024: 477976000, v2023: 472627000}
 
-  - {code: "B",      total: false, name: "B) Fondi per rischi e oneri", v2024: , v2023: }
-  - {code: "C",      total: false, name: "C) Trattamento di fine rapporto di lavoro subordinato", v2024: , v2023: }
+  - {code: "B",      total: false, name: "B) Fondi per rischi e oneri", v2024: 9965000, v2023: 9076000}
+  - {code: "C",      total: false, name: "C) Trattamento di fine rapporto di lavoro subordinato", v2024: 27950000, v2023: 29566000}
 
-  - {code: "D",      total: false, name: "D) Debiti", v2024: , v2023: }
-  - {code: "",       total: false, name: "    di cui debiti verso banche", v2024: , v2023: }
-  - {code: "",       total: false, name: "    di cui debiti verso Comune di Torino (controllante)", v2024: , v2023: }
+  - {code: "D",      total: false, name: "D) Debiti", v2024: 410264000, v2023: 469901000}
+  - {code: "",       total: false, name: "    di cui debiti verso banche", v2024: 58426000, v2023: 125906000}
+  - {code: "",       total: false, name: "    di cui debiti verso Comune di Torino (controllante)", v2024: 112632000, v2023: 112464000}
 
-  - {code: "E",      total: false, name: "E) Ratei e risconti passivi", v2024: , v2023: }
+  - {code: "E",      total: false, name: "E) Ratei e risconti passivi", v2024: 280706000, v2023: 220829000}
 
-  - {code: "",       total: true,  name: "TOTALE PASSIVO", v2024: , v2023: }
+  - {code: "",       total: true,  name: "TOTALE PASSIVO", v2024: 1206861000, v2023: 1201998000}
 
 # -----------------------------------------------------------------------------
 # CONTO ECONOMICO
 # -----------------------------------------------------------------------------
 conto_economico:
-  - {code: "A.1",    total: false, name: "A.1) Ricavi delle vendite e delle prestazioni", v2024: , v2023: }
-  - {code: "",       total: false, name: "A.4) Incrementi di immobilizzazioni per lavori interni", v2024: , v2023: }
-  - {code: "",       total: false, name: "A.5) Altri ricavi e proventi", v2024: , v2023: }
-  - {code: "",       total: false, name: "    di cui contributi in conto esercizio", v2024: , v2023: }
-  - {code: "A",      total: true,  name: "Totale valore della produzione (A)", v2024: , v2023: }
+  - {code: "A.1",    total: false, name: "A.1) Ricavi delle vendite e delle prestazioni", v2024: 160940000, v2023: 146377000}
+  - {code: "",       total: false, name: "A.4) Incrementi di immobilizzazioni per lavori interni", v2024: 5864000, v2023: 5345000}
+  - {code: "",       total: false, name: "A.5) Altri ricavi e proventi", v2024: 259343000, v2023: 272932000}
+  - {code: "",       total: false, name: "    di cui contributi in conto esercizio", v2024: 0, v2023: 0}
+  - {code: "A",      total: true,  name: "Totale valore della produzione (A)", v2024: 426146000, v2023: 424654000}
 
-  - {code: "B.6",    total: false, name: "B.6) Costi per materie prime, sussidiarie, di consumo e merci", v2024: , v2023: }
-  - {code: "B.7",    total: false, name: "B.7) Costi per servizi", v2024: , v2023: }
-  - {code: "B.8",    total: false, name: "B.8) Costi per godimento di beni di terzi", v2024: , v2023: }
-  - {code: "B.9",    total: false, name: "B.9) Costi per il personale", v2024: , v2023: }
-  - {code: "B.10",   total: false, name: "B.10) Ammortamenti e svalutazioni", v2024: , v2023: }
-  - {code: "B.11",   total: false, name: "B.11) Variazioni delle rimanenze", v2024: , v2023: }
-  - {code: "B.12",   total: false, name: "B.12) Accantonamenti per rischi", v2024: , v2023: }
-  - {code: "B.14",   total: false, name: "B.14) Oneri diversi di gestione", v2024: , v2023: }
-  - {code: "B",      total: true,  name: "Totale costi della produzione (B)", v2024: , v2023: }
+  - {code: "B.6",    total: false, name: "B.6) Costi per materie prime, sussidiarie, di consumo e merci", v2024: -36774000, v2023: -41730000}
+  - {code: "B.7",    total: false, name: "B.7) Costi per servizi", v2024: -99500000, v2023: -91732000}
+  - {code: "B.8",    total: false, name: "B.8) Costi per godimento di beni di terzi", v2024: -41452000, v2023: -40284000}
+  - {code: "B.9",    total: false, name: "B.9) Costi per il personale", v2024: -185003000, v2023: -193067000}
+  - {code: "B.10",   total: false, name: "B.10) Ammortamenti e svalutazioni", v2024: -43645000, v2023: -40426000}
+  - {code: "B.11",   total: false, name: "B.11) Variazioni delle rimanenze", v2024: 694000, v2023: 2867000}
+  - {code: "B.12",   total: false, name: "B.12) Accantonamenti per rischi", v2024: -500000, v2023: -1075000}
+  - {code: "B.13",   total: false, name: "B.13) Altri accantonamenti", v2024: -29000, v2023: -29000}
+  - {code: "B.14",   total: false, name: "B.14) Oneri diversi di gestione", v2024: -5526000, v2023: -5817000}
+  - {code: "B",      total: true,  name: "Totale costi della produzione (B)", v2024: 411736000, v2023: 411293000}
 
-  - {code: "",       total: true,  name: "Differenza tra valore e costi della produzione (A-B)", v2024: , v2023: }
+  - {code: "",       total: true,  name: "Differenza tra valore e costi della produzione (A-B)", v2024: 14410000, v2023: 13361000}
 
-  - {code: "C",      total: true,  name: "C) Totale proventi e oneri finanziari (15+16-17+/-17bis)", v2024: , v2023: }
-  - {code: "D",      total: true,  name: "D) Totale rettifiche di valore di attività finanziarie (18-19)", v2024: , v2023: }
+  - {code: "C",      total: true,  name: "C) Totale proventi e oneri finanziari (15+16-17+/-17bis)", v2024: 17501000, v2023: 13374000}
+  - {code: "D",      total: true,  name: "D) Totale rettifiche di valore di attività finanziarie (18-19)", v2024: 4432000, v2023: 553000}
 
-  - {code: "",       total: true,  name: "Risultato prima delle imposte", v2024: , v2023: }
-  - {code: "20",     total: false, name: "20) Imposte sul reddito dell'esercizio", v2024: , v2023: }
-  - {code: "21",     total: true,  name: "21) Utile (perdita) dell'esercizio (consolidato)", v2024: , v2023: }
-  - {code: "",       total: false, name: "    - di cui di pertinenza di terzi", v2024: , v2023: }
-  - {code: "",       total: false, name: "    - di cui di pertinenza del gruppo", v2024: , v2023: }
+  - {code: "",       total: true,  name: "Risultato prima delle imposte", v2024: 27479000, v2023: 27288000}
+  - {code: "20",     total: false, name: "20) Imposte sul reddito dell'esercizio", v2024: -1164000, v2023: -68000}
+  - {code: "21",     total: true,  name: "21) Utile (perdita) dell'esercizio (consolidato)", v2024: 26315000, v2023: 27221000}
+  - {code: "",       total: false, name: "    - di cui di pertinenza di terzi", v2024: 0, v2023: 0}
+  - {code: "",       total: false, name: "    - di cui di pertinenza del gruppo", v2024: 26315000, v2023: 27221000}
