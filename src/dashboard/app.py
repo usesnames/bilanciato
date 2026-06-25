@@ -235,6 +235,26 @@ def popolazione_all():
     return get_repo().popolazione_all()
 
 
+@st.cache_data(ttl=300)
+def contratti_years():
+    return get_repo().contratti_years()
+
+
+@st.cache_data(ttl=300)
+def contratti(anno=None, search=None, limit=500):
+    return get_repo().contratti(anno=anno, search=search, limit=limit)
+
+
+@st.cache_data(ttl=300)
+def contratti_summary(anno=None):
+    return get_repo().contratti_summary(anno=anno)
+
+
+@st.cache_data(ttl=300)
+def contratti_top_fornitori(anno=None, limit=15):
+    return get_repo().contratti_top_fornitori(anno=anno, limit=limit)
+
+
 # Human labels for rendiconto measures.
 RENDICONTO_MEASURES = {
     "spesa": {
@@ -1404,11 +1424,64 @@ def page_open_data():
     )
 
 
+def page_contratti():
+    st.header("Appalti e contratti")
+    yrs = contratti_years()
+    if not yrs:
+        st.info("Nessun contratto caricato. Esegui `python -m src.etl.load_contratti`.")
+        return
+    st.caption(
+        "Singoli affidamenti del Comune di Torino dall'**elenco L.190/2012 art.1 c.32** "
+        "(open data). Ogni riga è un lotto: oggetto, aggiudicatario, CIG, importo di "
+        "aggiudicazione e somme liquidate nell'anno. Il CIG è la chiave verso ANAC. "
+        "Nota: l'obbligo L.190 è cessato a metà 2023, quindi la serie si ferma al 2023 "
+        "(i contratti 2024-2025 vanno presi da ANAC/portale bandi).")
+
+    c1, c2 = st.columns([1, 2])
+    anno = c1.selectbox("Anno", ["Tutti"] + [str(y) for y in sorted(yrs, reverse=True)])
+    anno_val = None if anno == "Tutti" else int(anno)
+    query = c2.text_input("Cerca (oggetto, fornitore, CIG)", "")
+
+    s = contratti_summary(anno_val)
+    if s and s.get("n"):
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Contratti", f"{int(s['n']):,}".replace(",", "."))
+        m2.metric("Aggiudicato", fmt_eur(s.get("tot_aggiudicato") or 0))
+        m3.metric("Liquidato", fmt_eur(s.get("tot_liquidato") or 0))
+        m4.metric("Fornitori distinti", f"{int(s.get('n_fornitori') or 0):,}".replace(",", "."))
+
+    rows = contratti(anno=anno_val, search=query.strip() or None, limit=500)
+    st.markdown(f"**{len(rows)}** contratti (ordinati per importo di aggiudicazione, max 500)")
+    if rows:
+        df = pd.DataFrame(rows)
+        df["importo aggiudicazione"] = [fmt_eur(v) for v in df["importo_aggiudicazione"]]
+        df["liquidato"] = [fmt_eur(v) for v in df["importo_liquidato"]]
+        view = df[["anno", "oggetto", "aggiudicatario", "cig", "scelta_contraente",
+                   "importo aggiudicazione", "liquidato", "capitolo_code"]].rename(
+            columns={"scelta_contraente": "procedura", "capitolo_code": "capitolo"})
+        st.dataframe(view, use_container_width=True, hide_index=True, height=460)
+        st.download_button(
+            "Scarica CSV", pd.DataFrame(rows).to_csv(index=False).encode("utf-8"),
+            file_name=f"contratti_torino_{anno}.csv", mime="text/csv")
+
+    forn = contratti_top_fornitori(anno_val, limit=15)
+    if forn:
+        st.subheader("Principali fornitori per importo aggiudicato")
+        fig = go.Figure(go.Bar(
+            x=[scale_eur(f["importo"]) for f in forn][::-1],
+            y=[(f["aggiudicatario"] or "?")[:45] for f in forn][::-1],
+            orientation="h"))
+        fig.update_layout(height=460, xaxis_title=eur_unit(),
+                          margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig, use_container_width=True)
+
+
 PAGES = {
     "Rendiconto della gestione": page_rendiconto,
     "Debito del Comune": page_debito,
     "Esplora le partecipate": page_entities,
     "Prospetti di bilancio": page_statements,
+    "Appalti e contratti": page_contratti,
     "Dati aperti / per LLM": page_open_data,
 }
 

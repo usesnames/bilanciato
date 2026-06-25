@@ -20,3 +20,5 @@ site/
 uploads/*.pdf
 uploads/bdap_rendiconto/
 uploads/partecipate/
+# Source contracts XML (L.190 open data) — re-downloadable, see load_contratti.py
+uploads/contratti_l190/

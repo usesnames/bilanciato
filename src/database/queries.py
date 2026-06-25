@@ -620,3 +620,75 @@ class Repository:
                FROM rendiconto_capitoli
                ORDER BY year, kind, liv1_code, liv2_code, liv3_code, capitolo_code, measure"""
         )
+
+    # -- contratti / appalti (L.190 open data) ------------------------------
+    def contratti_years(self) -> list[int]:
+        if not self._has_table("contratti"):
+            return []
+        return [int(r["anno"]) for r in
+                self._rows("SELECT DISTINCT anno FROM contratti ORDER BY anno")]
+
+    def contratti(
+        self, *, anno: int | None = None, search: str | None = None,
+        order_by: str = "importo_aggiudicazione", limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Contracts, ranked (default by award amount), optionally filtered by year
+        and a free-text match on oggetto/aggiudicatario."""
+        col = "importo_aggiudicazione" if order_by not in (
+            "importo_aggiudicazione", "importo_liquidato") else order_by
+        where, params = [], []
+        if anno is not None:
+            where.append("anno = ?")
+            params.append(anno)
+        if search:
+            where.append("(oggetto ILIKE ? OR aggiudicatario ILIKE ? OR cig ILIKE ?)")
+            params += [f"%{search}%"] * 3
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
+        params.append(limit)
+        return self._rows(
+            f"""SELECT cig, anno, oggetto, struttura, scelta_contraente, aggiudicatario,
+                       n_partecipanti, importo_aggiudicazione, importo_liquidato,
+                       data_inizio, data_ultimazione, capitolo_code
+                FROM contratti {clause}
+                ORDER BY {col} DESC NULLS LAST LIMIT ?""",
+            params,
+        )
+
+    def contratti_summary(self, *, anno: int | None = None) -> dict[str, Any]:
+        """Headline totals for the contracts page."""
+        where = "WHERE anno = ?" if anno is not None else ""
+        params = [anno] if anno is not None else []
+        r = self._rows(
+            f"""SELECT count(*) AS n,
+                       sum(importo_aggiudicazione) AS tot_aggiudicato,
+                       sum(importo_liquidato) AS tot_liquidato,
+                       count(DISTINCT aggiudicatario) AS n_fornitori
+                FROM contratti {where}""",
+            params,
+        )
+        return r[0] if r else {}
+
+    def contratti_top_fornitori(
+        self, *, anno: int | None = None, limit: int = 15,
+    ) -> list[dict[str, Any]]:
+        where = "WHERE anno = ?" if anno is not None else ""
+        params = [anno] if anno is not None else []
+        params.append(limit)
+        return self._rows(
+            f"""SELECT aggiudicatario,
+                       count(*) AS n_contratti,
+                       sum(importo_aggiudicazione) AS importo
+                FROM contratti {where}
+                GROUP BY aggiudicatario
+                ORDER BY importo DESC NULLS LAST LIMIT ?""",
+            params,
+        )
+
+    def all_contratti(self) -> list[dict[str, Any]]:
+        return self._rows(
+            """SELECT cig, anno, oggetto, struttura, scelta_contraente, aggiudicatario,
+                      aggiudicatario_cf, n_partecipanti, importo_aggiudicazione,
+                      importo_liquidato, data_inizio, data_ultimazione, capitolo_code,
+                      source_document
+               FROM contratti ORDER BY anno, importo_aggiudicazione DESC NULLS LAST"""
+        )

@@ -227,6 +227,28 @@ CREATE TABLE IF NOT EXISTS entity_statements (
     source_page   INTEGER NOT NULL
 );
 
+-- Public contracts (appalti/affidamenti) from the Comune's L.190/2012 art.1 c.32
+-- open dataset (one row per lotto per reference year). The CIG is the join key to
+-- ANAC; capitolo_code is the (optional) bridge to the budget, populated from the
+-- determinazione dirigenziale where known.
+CREATE TABLE IF NOT EXISTS contratti (
+    id                  INTEGER PRIMARY KEY,
+    cig                 VARCHAR,
+    anno                INTEGER NOT NULL,   -- dataset reference year
+    oggetto             VARCHAR,
+    struttura           VARCHAR,            -- struttura proponente
+    scelta_contraente   VARCHAR,            -- procedura (es. 23-AFFIDAMENTO DIRETTO)
+    aggiudicatario      VARCHAR,
+    aggiudicatario_cf   VARCHAR,
+    n_partecipanti      INTEGER,
+    importo_aggiudicazione DECIMAL(20, 2),
+    importo_liquidato   DECIMAL(20, 2),     -- somme liquidate nell'anno
+    data_inizio         VARCHAR,
+    data_ultimazione    VARCHAR,
+    capitolo_code       VARCHAR,            -- bridge to rendiconto_capitoli (via DD)
+    source_document     VARCHAR NOT NULL
+);
+
 -- The entity-name crosswalk: every raw name seen in any source mapped to its
 -- canonical slug/name. This is the "normalization map" as a queryable object.
 CREATE OR REPLACE VIEW entity_crosswalk AS
