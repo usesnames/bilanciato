@@ -445,6 +445,8 @@ IFRS_CONSOLIDATED = {"iren", "smat"}
 CIVIL_CONSOLIDATED = {"fct_holding"}
 # Single-company IAS/IFRS *bilancio d'esercizio* (not a group consolidato).
 IFRS_SEPARATE = {"amiat"}
+# Public-law bodies on the harmonized accounting scheme (D.Lgs 118/2011).
+PUBLIC_HARMONIZED = {"cit"}
 
 _RP_BADGE = {
     "socio": ("socio", "Rapporto con il socio unico Città di Torino"),
@@ -571,6 +573,12 @@ def page_entity_statements(slug: str, display_name: str) -> None:
             f"Stato patrimoniale e conto economico di {display_name}, schema "
             f"IAS/IFRS, esercizi {years[-1]}-{years[0]}. Le voci evidenziate sono "
             f"**rapporti con il socio Città di Torino**.")
+    elif slug in PUBLIC_HARMONIZED:
+        st.subheader("Rendiconto della gestione (stato patrimoniale e conto economico)")
+        st.caption(
+            f"Stato patrimoniale e conto economico di {display_name} dal "
+            f"**rendiconto della gestione**, schema armonizzato D.Lgs 118/2011 "
+            f"(Allegato 10), esercizi {years[-1]}-{years[0]}.")
     else:
         st.subheader("Bilancio d'esercizio (schema civilistico)")
         st.caption(
@@ -1065,18 +1073,6 @@ def page_rendiconto():
             f"Importi in **euro per abitante** · residenti Torino: "
             f"{_fmt_plain(pop.get(max(pop)), 0)} ({max(pop)}).")
 
-    # -- optional comparison with another comune (città metropolitane, BDAP) ---
-    city_opts = {c["comune"].title(): c["comune"]
-                 for c in confronto_cities() if c["comune"] != "TORINO"}
-    compare_labels = st.multiselect(
-        "Confronta con un altro comune",
-        sorted(city_opts),
-        help="Aggiunge all'istogramma del dettaglio annuale le barre di un'altra città "
-             "metropolitana, con la stessa suddivisione per missione/titolo (dati BDAP/RGS). "
-             "Con il confronto attivo, usa «In %» per leggere le quote a parità di scala.") \
-        if city_opts else []
-    compare_comuni = [city_opts[lbl] for lbl in compare_labels]
-
     def fmt_pc(v, year):
         """Format a euro value, as euro-per-resident when the per-capita view is on."""
         if per_capita and pop.get(year):
@@ -1101,6 +1097,19 @@ def page_rendiconto():
                         per_capita=per_capita, pop=pop)
 
     # -- single-year ranked breakdown ------------------------------------------
+    # Comparison with another comune: placed here, right above the yearly detail
+    # chart that actually shows the comparison bars.
+    city_opts = {c["comune"].title(): c["comune"]
+                 for c in confronto_cities() if c["comune"] != "TORINO"}
+    compare_labels = st.multiselect(
+        "Confronta con un altro comune",
+        sorted(city_opts),
+        help="Aggiunge all'istogramma del dettaglio annuale le barre di un'altra città "
+             "metropolitana, con la stessa suddivisione per missione/titolo (dati BDAP/RGS). "
+             "Con il confronto attivo, usa «In %» per leggere le quote a parità di scala.") \
+        if city_opts else []
+    compare_comuni = [city_opts[lbl] for lbl in compare_labels]
+
     st.subheader("Dettaglio di un anno")
     year = st.selectbox("Anno", sorted(yrs, reverse=True))
     yr_rows = [r for r in rows if r["year"] == year and str(r["code"]) not in exclude_codes]
