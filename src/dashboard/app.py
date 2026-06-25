@@ -443,6 +443,8 @@ STATEMENT_CATEGORIES = [
 IFRS_CONSOLIDATED = {"iren", "smat"}
 # Entities shown as civil-code *consolidated* group statements (D.Lgs 127/91).
 CIVIL_CONSOLIDATED = {"fct_holding"}
+# Single-company IAS/IFRS *bilancio d'esercizio* (not a group consolidato).
+IFRS_SEPARATE = {"amiat"}
 
 _RP_BADGE = {
     "socio": ("socio", "Rapporto con il socio unico Città di Torino"),
@@ -562,6 +564,12 @@ def page_entity_statements(slug: str, display_name: str) -> None:
             f"Stato patrimoniale e conto economico **consolidati** del {display_name} "
             f"(capogruppo + controllate), schema ex D.Lgs 127/91 (artt. 2424/2425 "
             f"c.c.), esercizi {years[-1]}-{years[0]}. Le voci evidenziate sono "
+            f"**rapporti con il socio Città di Torino**.")
+    elif slug in IFRS_SEPARATE:
+        st.subheader("Bilancio d'esercizio (schema IAS/IFRS)")
+        st.caption(
+            f"Stato patrimoniale e conto economico di {display_name}, schema "
+            f"IAS/IFRS, esercizi {years[-1]}-{years[0]}. Le voci evidenziate sono "
             f"**rapporti con il socio Città di Torino**.")
     else:
         st.subheader("Bilancio d'esercizio (schema civilistico)")

@@ -26,6 +26,7 @@ from decimal import Decimal
 
 import pdfplumber
 
+from src.etl.curated_amiat import curated_items as _amiat_curated
 from src.etl.curated_iren import curated_items as _iren_curated
 from src.etl.curated_smat import curated_items as _smat_curated
 from src.normalization import entity_statements as es
@@ -35,7 +36,7 @@ PARTECIPATE_DIR = UPLOADS / "partecipate"
 
 # Entities whose figures are hand-curated (transcribed + verified) rather than
 # parsed: their PDFs are too irregular for the generic coordinate parser.
-CURATED = {"iren": _iren_curated, "smat": _smat_curated}
+CURATED = {"iren": _iren_curated, "smat": _smat_curated, "amiat": _amiat_curated}
 
 
 @dataclass
@@ -93,6 +94,20 @@ FASCICOLI: list[EntityFascicolo] = [
         consolidated=True,
         rapporti_pages=(192,),
         rapporti_entity="Città di Torino",
+    ),
+    EntityFascicolo(
+        slug="amiat",
+        name="AMIAT S.p.A.",
+        filename="Bilancio Amiat 2024.pdf",
+        year=2024, prev_year=2023,
+        attivo_pages=(41,),
+        passivo_pages=(41,),
+        conto_economico_pages=(42,),
+        ifrs=True,
+        migliaia=1,
+        consolidated=False,
+        rapporti_pages=(95,),
+        rapporti_entity="Comune Torino",
     ),
 ]
 
