@@ -29,6 +29,7 @@ import pdfplumber
 from src.etl.curated_amiat import curated_items as _amiat_curated
 from src.etl.curated_iren import curated_items as _iren_curated
 from src.etl.curated_smat import curated_items as _smat_curated
+from src.etl.curated_tne import curated_items as _tne_curated
 from src.normalization import entity_statements as es
 from src.utils.config import UPLOADS
 
@@ -36,7 +37,8 @@ PARTECIPATE_DIR = UPLOADS / "partecipate"
 
 # Entities whose figures are hand-curated (transcribed + verified) rather than
 # parsed: their PDFs are too irregular for the generic coordinate parser.
-CURATED = {"iren": _iren_curated, "smat": _smat_curated, "amiat": _amiat_curated}
+CURATED = {"iren": _iren_curated, "smat": _smat_curated, "amiat": _amiat_curated,
+           "tne": _tne_curated}
 
 
 @dataclass
@@ -108,6 +110,16 @@ FASCICOLI: list[EntityFascicolo] = [
         consolidated=False,
         rapporti_pages=(95,),
         rapporti_entity="Comune Torino",
+    ),
+    EntityFascicolo(
+        slug="tne",
+        name="TNE S.p.A.",
+        filename="Torino_Nuova_Economia_Bilancio 2024_approvato.pdf",
+        year=2024, prev_year=2023,
+        attivo_pages=(3,),
+        passivo_pages=(4,),
+        conto_economico_pages=(5,),
+        ifrs=False,
     ),
 ]
 
@@ -197,14 +209,17 @@ def _validate(fasc: EntityFascicolo, items: list[es.StatementItem]) -> list[str]
                 problems.append(f"{yr}: risultato netto CE {ce} != SP {sp}")
         else:
             ta = find(es.ATTIVO, yr, lambda n: n == "TOTALEATTIVO")
-            tp = find(es.PASSIVO, yr, lambda n: n.startswith("TOTALEPASSIVOENET"))
+            tp = find(es.PASSIVO, yr,
+                      lambda n: n.startswith("TOTALEPASSIVOENET") or n == "TOTALEPASSIVO")
             if ta is None or tp is None:
                 problems.append(f"{yr}: totale attivo/passivo non trovato ({ta} / {tp})")
             elif ta != tp:
                 problems.append(f"{yr}: attivo {ta} != passivo {tp}")
             ce = find(es.CONTO_ECONOMICO, yr,
                       lambda n: n.startswith("21)UTILE") or "UTILE(PERDITA)DELL'ESER" in n)
-            sp = find(es.PASSIVO, yr, lambda n: "UTILE(PERDITA)D'ESERCIZIO" in n)
+            sp = find(es.PASSIVO, yr,
+                      lambda n: "UTILE(PERDITA)D'ESERCIZIO" in n
+                                or "UTILE(PERDITA)DELL'ESERCIZIO" in n)
             if ce is not None and sp is not None and ce != sp:
                 problems.append(f"{yr}: utile CE {ce} != utile SP {sp}")
     return problems
