@@ -22,3 +22,5 @@ uploads/bdap_rendiconto/
 uploads/partecipate/
 # Source contracts XML (L.190 open data) — re-downloadable, see load_contratti.py
 uploads/contratti_l190/
+# Source DD PDFs (bandi portal) — data is curated inline in load_dd_samples.py
+uploads/contratti_dd/
