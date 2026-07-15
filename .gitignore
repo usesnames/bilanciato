@@ -22,5 +22,9 @@ uploads/bdap_rendiconto/
 uploads/partecipate/
 # Source contracts XML (L.190 open data) — re-downloadable, see load_contratti.py
 uploads/contratti_l190/
-# Source DD PDFs (bandi portal) — data is curated inline in load_dd_samples.py
+# DD PDFs harvested from pubatti (re-downloadable, see fetch_dd_capitoli.py)
+uploads/determinazioni_pubatti/pdfs/
+uploads/determinazioni_pubatti/_processed_ids.txt
+uploads/determinazioni_pubatti/_DOWNLOAD_PROGRESS.txt
+# Sample DD PDFs from the bandi portal (legacy experiment, re-downloadable)
 uploads/contratti_dd/
