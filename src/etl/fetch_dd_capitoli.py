@@ -123,12 +123,16 @@ def snap(digits: str, exact: dict, base9: dict):
     d = re.sub(r'\D', '', digits or '')
     if d in exact:
         return exact[d], 'exact'
-    cands = base9.get(d[:9], [])
-    if len(cands) == 1:
-        return exact[cands[0]], 'base9-unique'
-    if cands:
-        best = max(cands, key=lambda c: len(os.path.commonprefix([c, d])))
-        return exact[best], 'base9-multi'
+    z = d.zfill(12)          # some divisions print the capitolo without leading zeros
+    if z in exact:
+        return exact[z], 'zfill12'
+    for base in dict.fromkeys((d[:9], z[:9])):
+        cands = base9.get(base, [])
+        if len(cands) == 1:
+            return exact[cands[0]], 'base9-unique'
+        if cands:
+            best = max(cands, key=lambda c: len(os.path.commonprefix([c, d])))
+            return exact[best], 'base9-multi'
     return None, 'unmatched'
 
 
@@ -149,6 +153,19 @@ def _rows_from_tables(pdf):
                        and any(k in " ".join(_norm(c) for c in row).lower()
                                for k in ('importo', 'miss'))), None)
             if hi is None:
+                # a page break can orphan the value rows from their header table:
+                # accept any row shaped like (capitolo 9-12 digits, importo, anno) —
+                # snap() drops whatever is not a real spesa capitolo.
+                for row in tb:
+                    cells = [_norm(c) for c in row]
+                    cap = next((c for c in cells
+                                if re.fullmatch(r'\d{9,12}', c.replace(' ', ''))), None)
+                    money = next((MONEY.search(c).group(1) for c in cells
+                                  if MONEY.search(c)), None)
+                    anno = next((c for c in cells if re.fullmatch(r'20\d{2}', c)), None)
+                    if cap and money:
+                        out.append(dict(digits=cap.replace(' ', ''),
+                                        importo=money, anno=anno))
                 continue
             cm = {}
             for i, c in enumerate(tb[hi]):
