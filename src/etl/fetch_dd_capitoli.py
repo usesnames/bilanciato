@@ -28,6 +28,7 @@ import csv
 import json
 import os
 import re
+import signal
 import sys
 import time
 import urllib.parse
@@ -59,6 +60,9 @@ MONEY = re.compile(r'(\d{1,3}(?:\.\d{3})*,\d{2})')
 CAP = re.compile(r'(\d{9,12})')
 YEAR = re.compile(r'\b(20\d{2})\b')
 DATE = r'\d{2}[/.]\d{2}[/.]\d{2,4}'
+# capitolo + servizio + scadenza: the strict form first (contiguous digits, so an
+# adjacent anno cannot be glued in), then the loose one for space-broken codes.
+ANCHOR_STRICT = re.compile(rf'(?<![\d.])(\d{{9,12}})(?!\d)\s+\d{{1,3}}\s+(?:{DATE})')
 ANCHOR = re.compile(rf'(\d[\d ]{{7,13}}\d)\s+\d{{1,3}}\s+(?:{DATE})')
 
 
@@ -195,25 +199,93 @@ def _rows_from_tables(pdf):
     return out
 
 
+def _money_near(lines, idx, pre):
+    """Importo of the value row at ``idx``: on the row itself, on the lines just
+    above, or wrapped across lines ('31.233.000,0' above + a lone '0' below)."""
+    mon = MONEY.findall(pre) or MONEY.findall("\n".join(lines[max(0, idx - 2):idx]))
+    if mon:
+        return mon[0]
+    partial = re.compile(r'\d{1,3}(?:\.\d{3})+,\d\b')
+    for w in lines[max(0, idx - 2):idx]:
+        m = partial.search(w)
+        if m and idx + 1 < len(lines) and re.fullmatch(r'\d', lines[idx + 1].strip()):
+            return m.group(0) + lines[idx + 1].strip()
+    return None
+
+
 def _rows_from_text(pdf):
     text = "\n".join((p.extract_text() or "") for p in pdf.pages)
     lines = text.split("\n")
     out = []
     for idx, line in enumerate(lines):
-        for m in ANCHOR.finditer(line):
-            above = "\n".join(lines[max(0, idx - 2):idx + 1])
-            mon = MONEY.findall(line[:m.start()]) or MONEY.findall(above)
-            yr = YEAR.search(above)
+        hits = list(ANCHOR_STRICT.finditer(line)) or list(ANCHOR.finditer(line))
+        for m in hits:
+            pre = line[:m.start()]
+            yr = YEAR.search(pre) or YEAR.search("\n".join(lines[max(0, idx - 2):idx]))
             out.append(dict(digits=re.sub(r'\D', '', m.group(1)),
-                            importo=mon[0] if mon else None,
+                            importo=_money_near(lines, idx, pre),
                             anno=yr.group(1) if yr else None))
     return out
 
 
-def extract(fp, exact, base9):
-    """All snapped impegni of one DD PDF: [{capitolo, missione, ..., importo, anno}]."""
+def _rows_from_words(pdf):
+    """Last resort for unruled tables whose cells wrap VERTICALLY across lines
+    (e.g. '15.616.5'/'00,00' and '7410000'/'1001'): rebuild each column from word
+    x-coordinates under the 'Importo'/'Capitolo'/'Anno' header words."""
+    out = []
+    for page in pdf.pages:
+        words = page.extract_words()
+        anchors = [w for w in words if w['text'].lower().startswith('capitolo')]
+        importos = [w for w in words if w['text'].lower().startswith('importo')]
+        for a in anchors:
+            imp_hdr = next((w for w in importos if abs(w['top'] - a['top']) < 40), None)
+            if imp_hdr is None:
+                continue
+            desc_tops = [w['top'] for w in words
+                         if w['text'].lower().startswith('descrizione') and w['top'] > a['top']]
+            y_end = min(desc_tops) if desc_tops else a['bottom'] + 120
+
+            def col(hw):
+                # strict x-overlap with the header span, so the neighbouring
+                # column (a few pt to the right) cannot bleed into the digits
+                frs = [w for w in words if a['bottom'] < w['top'] < y_end
+                       and w['x1'] > hw['x0'] and w['x0'] < hw['x1']]
+                return "".join(w['text'] for w in sorted(frs, key=lambda w: w['top']))
+
+            digits = re.sub(r'\D', '', col(a))
+            if not 9 <= len(digits) <= 14:
+                continue
+            money = MONEY.search(col(imp_hdr).replace(' ', ''))
+            anno_hdr = next((w for w in words if w['text'].lower().startswith('anno')
+                             and abs(w['top'] - a['top']) < 40), None)
+            ym = YEAR.search(col(anno_hdr)) if anno_hdr else None
+            out.append(dict(digits=digits, importo=money.group(0) if money else None,
+                            anno=ym.group(1) if ym else None))
+    return out
+
+
+def _raise_timeout(signum, frame):
+    raise TimeoutError("estrazione PDF oltre il tempo limite")
+
+
+def extract(fp, exact, base9, timeout: int = 90):
+    """All snapped impegni of one DD PDF: [{capitolo, missione, ..., importo, anno}].
+    A per-PDF SIGALRM guard skips the rare pathological file that makes pdfplumber
+    grind for minutes (raises TimeoutError, caught by the callers' per-DD except)."""
+    if timeout and hasattr(signal, "SIGALRM"):
+        old = signal.signal(signal.SIGALRM, _raise_timeout)
+        signal.alarm(timeout)
+        try:
+            return _extract(fp, exact, base9)
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+    return _extract(fp, exact, base9)
+
+
+def _extract(fp, exact, base9):
     with pdfplumber.open(fp) as pdf:
-        raw = _rows_from_tables(pdf) or _rows_from_text(pdf)
+        raw = _rows_from_tables(pdf) or _rows_from_text(pdf) or _rows_from_words(pdf)
     seen, imput = set(), []
     for r in raw:
         info, how = snap(r['digits'], exact, base9)
