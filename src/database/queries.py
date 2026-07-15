@@ -534,6 +534,34 @@ class Repository:
             [kind, year, measure],
         )
 
+    def capitoli_contratti(self, *, year: int) -> list[dict[str, Any]]:
+        """Per-capitolo rollup of the contract determinazioni UNIVOCALLY linked to
+        it (DD with exactly one distinct capitolo), for the treemap hover: number
+        of DD, total impegnato in ``year``, and up to two example acts."""
+        if not self._has_table("contratti_capitoli"):
+            return []
+        return self._rows(
+            """WITH uni AS (
+                   SELECT c.dd_numero, c.oggetto, cc.capitolo_code,
+                          sum(cc.importo) AS imp
+                   FROM contratti c
+                   JOIN contratti_capitoli cc ON cc.contratto_id = c.id
+                   WHERE c.n_capitoli = 1 AND cc.anno_imp = ?
+                   GROUP BY ALL
+               ), ranked AS (
+                   SELECT *, row_number() OVER (PARTITION BY capitolo_code
+                                                ORDER BY imp DESC NULLS LAST) AS rn
+                   FROM uni
+               )
+               SELECT capitolo_code,
+                      count(*) AS n_dd,
+                      sum(imp) AS importo,
+                      string_agg(CASE WHEN rn <= 2 THEN dd_numero || ' — ' ||
+                                 substr(oggetto, 1, 70) END, '||' ORDER BY rn) AS esempi
+               FROM ranked GROUP BY capitolo_code""",
+            [year],
+        )
+
     def capitoli_liv1(self, *, kind: str, year: int) -> list[dict[str, Any]]:
         """Distinct top-level voci (missione/titolo) for the drill-down selector."""
         return self._rows(

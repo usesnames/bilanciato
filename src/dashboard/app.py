@@ -255,6 +255,11 @@ def contratti_per_missione(anno=None):
     return get_repo().contratti_per_missione(anno=anno)
 
 
+@st.cache_data(ttl=300)
+def capitoli_contratti(year):
+    return get_repo().capitoli_contratti(year=year)
+
+
 # Human labels for rendiconto measures.
 RENDICONTO_MEASURES = {
     "spesa": {
@@ -873,7 +878,10 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             f"Dettaglio analitico {year}: ogni macroarea esplosa fino al singolo "
             f"capitolo di bilancio (misura: {measure_label.lower()}). Fonte: Conto di "
             "Bilancio D.Lgs 118 analitico per capitoli. I capitoli sommano esattamente "
-            "agli aggregati per missione/titolo qui sopra.")
+            "agli aggregati per missione/titolo qui sopra."
+            + (" Passando il mouse su un capitolo, il fumetto 🔗 mostra le "
+               "determinazioni-contratto collegate in modo univoco a quel capitolo "
+               "(dalla pagina Appalti e contratti)." if kind == "spesa" else ""))
         leaf = capitoli(kind=kind, year=year, measure=measure, limit=100000)
         df = pd.DataFrame(leaf)
         if not df.empty:
@@ -898,12 +906,24 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             if (r := glossary.capitolo_note(dn)) else ""
             for dn in df["denominazione"]
         ]
+        # Contract enrichment (spese only): determinazioni univocally linked to the
+        # capitolo (from the pubatti pipeline), shown in the leaf hover.
+        contr = {}
+        if kind == "spesa":
+            for c in capitoli_contratti(year):
+                esempi = "".join(
+                    f"<br>· {_esc(e[:80])}" for e in (c["esempi"] or "").split("||") if e)
+                contr[c["capitolo_code"]] = (
+                    "<br><span style='font-size:11px;color:#0a58ca'>"
+                    f"🔗 {int(c['n_dd'])} determinazioni-contratto {year}: "
+                    f"{fmt_eur(c['importo'] or 0)}{esempi}</span>")
+        df["_contr_hover"] = [contr.get(str(cc), "") for cc in df["capitolo_code"]]
         # Full path down to the single capitolo; maxdepth keeps the initial view at
         # the macro-area level and reveals capitoli on click (responsive with ~4k leaves).
         fig = px.treemap(
             df, path=[px.Constant(root), lab1, lab2, lab3, "Capitolo"], values="val",
             color=lab1, color_discrete_sequence=_PALETTE, maxdepth=4,
-            custom_data=["_note_hover"])
+            custom_data=["_note_hover", "_contr_hover"])
         # Intermediate nodes (missione/programma/macroaggregato) are created by plotly
         # from the path and get no customdata; replace their NaN with "" so the
         # %{customdata[0]} token in the hovertemplate renders as nothing.
@@ -915,7 +935,8 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             root_color="lightgrey",
             textfont_size=17,
             hovertemplate="<b>%{label}</b><br>%{value:,.0f} " + eur_unit()
-            + "<br>%{percentRoot} del totale%{customdata[0]}<extra></extra>")
+            + "<br>%{percentRoot} del totale%{customdata[0]}%{customdata[1]}"
+            + "<extra></extra>")
         # Fixed font (no uniformtext) => plotly keeps every label at 17px and shows
         # only the part that fits the tile, clipping the rest at the box edge (the
         # full name is always available on hover). Nothing is hidden.
