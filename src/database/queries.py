@@ -621,7 +621,13 @@ class Repository:
                ORDER BY year, kind, liv1_code, liv2_code, liv3_code, capitolo_code, measure"""
         )
 
-    # -- contratti / appalti (L.190 open data) ------------------------------
+    # -- contratti (determinazioni dirigenziali con CIG, da pubatti) --------
+    # One row per DD; the impegni (capitoli) live in contratti_capitoli and are
+    # aggregated here via the capitolo -> missione lookup on rendiconto_capitoli.
+    _CAP_MISSIONE = """
+        SELECT capitolo_code, max(liv1_code) AS liv1_code, max(liv1_name) AS liv1_name
+        FROM rendiconto_capitoli WHERE kind='spesa' GROUP BY capitolo_code"""
+
     def contratti_years(self) -> list[int]:
         if not self._has_table("contratti"):
             return []
@@ -630,27 +636,31 @@ class Repository:
 
     def contratti(
         self, *, anno: int | None = None, search: str | None = None,
-        order_by: str = "importo_aggiudicazione", limit: int = 500,
+        limit: int = 500,
     ) -> list[dict[str, Any]]:
-        """Contracts, ranked (default by award amount), optionally filtered by year
-        and a free-text match on oggetto/aggiudicatario."""
-        col = "importo_aggiudicazione" if order_by not in (
-            "importo_aggiudicazione", "importo_liquidato") else order_by
+        """Determinazioni-contratto, ranked by importo, optionally filtered by
+        year and a free-text match on oggetto/CIG/numero DD."""
         where, params = [], []
         if anno is not None:
-            where.append("anno = ?")
+            where.append("c.anno = ?")
             params.append(anno)
         if search:
-            where.append("(oggetto ILIKE ? OR aggiudicatario ILIKE ? OR cig ILIKE ?)")
+            where.append("(c.oggetto ILIKE ? OR c.cig ILIKE ? OR c.dd_numero ILIKE ?)")
             params += [f"%{search}%"] * 3
         clause = f"WHERE {' AND '.join(where)}" if where else ""
         params.append(limit)
         return self._rows(
-            f"""SELECT cig, anno, oggetto, struttura, scelta_contraente, aggiudicatario,
-                       n_partecipanti, importo_aggiudicazione, importo_liquidato,
-                       data_inizio, data_ultimazione, capitolo_code
-                FROM contratti {clause}
-                ORDER BY {col} DESC NULLS LAST LIMIT ?""",
+            f"""SELECT c.anno, c.dd_numero, c.data_atto, c.cig, c.oggetto, c.importo,
+                       c.n_capitoli,
+                       string_agg(DISTINCT cc.capitolo_code, ' | ') AS capitoli,
+                       string_agg(DISTINCT cm.liv1_name, ' | ')     AS missioni
+                FROM contratti c
+                LEFT JOIN contratti_capitoli cc ON cc.contratto_id = c.id
+                LEFT JOIN ({self._CAP_MISSIONE}) cm
+                       ON cm.capitolo_code = cc.capitolo_code
+                {clause}
+                GROUP BY ALL
+                ORDER BY c.importo DESC NULLS LAST LIMIT ?""",
             params,
         )
 
@@ -660,35 +670,49 @@ class Repository:
         params = [anno] if anno is not None else []
         r = self._rows(
             f"""SELECT count(*) AS n,
-                       sum(importo_aggiudicazione) AS tot_aggiudicato,
-                       sum(importo_liquidato) AS tot_liquidato,
-                       count(DISTINCT aggiudicatario) AS n_fornitori
+                       sum(importo) AS tot_importo,
+                       count(*) FILTER (WHERE n_capitoli > 0) AS n_con_capitoli,
+                       (SELECT count(DISTINCT cc.capitolo_code)
+                        FROM contratti_capitoli cc
+                        JOIN contratti c2 ON c2.id = cc.contratto_id
+                        {'WHERE c2.anno = ?' if anno is not None else ''}
+                       ) AS n_capitoli_distinti
                 FROM contratti {where}""",
-            params,
+            params * 2 if anno is not None else params,
         )
         return r[0] if r else {}
 
-    def contratti_top_fornitori(
-        self, *, anno: int | None = None, limit: int = 15,
+    def contratti_per_missione(
+        self, *, anno: int | None = None,
     ) -> list[dict[str, Any]]:
-        where = "WHERE anno = ?" if anno is not None else ""
+        """Importo impegnato dai contratti per missione di bilancio (il ponte
+        DD -> capitolo -> treemap). Sums the impegni in contratti_capitoli."""
+        where = "WHERE c.anno = ?" if anno is not None else ""
         params = [anno] if anno is not None else []
-        params.append(limit)
         return self._rows(
-            f"""SELECT aggiudicatario,
-                       count(*) AS n_contratti,
-                       sum(importo_aggiudicazione) AS importo
-                FROM contratti {where}
-                GROUP BY aggiudicatario
-                ORDER BY importo DESC NULLS LAST LIMIT ?""",
+            f"""SELECT cm.liv1_code AS missione_code, cm.liv1_name AS missione,
+                       count(DISTINCT c.id) AS n_contratti,
+                       sum(cc.importo) AS importo
+                FROM contratti_capitoli cc
+                JOIN contratti c ON c.id = cc.contratto_id
+                JOIN ({self._CAP_MISSIONE}) cm ON cm.capitolo_code = cc.capitolo_code
+                {where}
+                GROUP BY cm.liv1_code, cm.liv1_name
+                ORDER BY importo DESC NULLS LAST""",
             params,
         )
 
     def all_contratti(self) -> list[dict[str, Any]]:
         return self._rows(
-            """SELECT cig, anno, oggetto, struttura, scelta_contraente, aggiudicatario,
-                      aggiudicatario_cf, n_partecipanti, importo_aggiudicazione,
-                      importo_liquidato, data_inizio, data_ultimazione, capitolo_code,
-                      source_document
-               FROM contratti ORDER BY anno, importo_aggiudicazione DESC NULLS LAST"""
+            f"""SELECT c.anno, c.dd_numero, c.data_atto, c.id_ud, c.cig, c.n_cig,
+                       c.oggetto, c.importo, c.n_capitoli,
+                       string_agg(DISTINCT cc.capitolo_code, ' | ') AS capitoli,
+                       string_agg(DISTINCT cm.liv1_name, ' | ')     AS missioni,
+                       c.source_document
+                FROM contratti c
+                LEFT JOIN contratti_capitoli cc ON cc.contratto_id = c.id
+                LEFT JOIN ({self._CAP_MISSIONE}) cm
+                       ON cm.capitolo_code = cc.capitolo_code
+                GROUP BY ALL
+                ORDER BY c.anno, c.importo DESC NULLS LAST"""
         )

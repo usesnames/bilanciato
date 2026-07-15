@@ -251,8 +251,8 @@ def contratti_summary(anno=None):
 
 
 @st.cache_data(ttl=300)
-def contratti_top_fornitori(anno=None, limit=15):
-    return get_repo().contratti_top_fornitori(anno=anno, limit=limit)
+def contratti_per_missione(anno=None):
+    return get_repo().contratti_per_missione(anno=anno)
 
 
 # Human labels for rendiconto measures.
@@ -1428,50 +1428,55 @@ def page_contratti():
     st.header("Appalti e contratti")
     yrs = contratti_years()
     if not yrs:
-        st.info("Nessun contratto caricato. Esegui `python -m src.etl.load_contratti`.")
+        st.info("Nessun contratto caricato. Esegui `python -m src.etl.load_contratti_pubatti`.")
         return
     st.caption(
-        "Singoli affidamenti del Comune di Torino dall'**elenco L.190/2012 art.1 c.32** "
-        "(open data). Ogni riga è un lotto: oggetto, aggiudicatario, CIG, importo di "
-        "aggiudicazione e somme liquidate nell'anno. Il CIG è la chiave verso ANAC. "
-        "Nota: l'obbligo L.190 è cessato a metà 2023, quindi la serie si ferma al 2023 "
-        "(i contratti 2024-2025 vanno presi da ANAC/portale bandi).")
+        "Spese contrattualizzate del Comune di Torino ricostruite dalle "
+        "**determinazioni dirigenziali** pubblicate all'Albo (pubatti.comune.torino.it). "
+        "Una riga per determinazione il cui oggetto cita un CIG (chiave verso ANAC); "
+        "gli impegni di spesa dell'atto sono agganciati ai **capitoli del bilancio** "
+        "e quindi a missioni e programmi. ⚠️ Gli affidamenti il cui CIG non compare "
+        "nell'estratto pubblicato non sono catturati.")
 
     c1, c2 = st.columns([1, 2])
     anno = c1.selectbox("Anno", ["Tutti"] + [str(y) for y in sorted(yrs, reverse=True)])
     anno_val = None if anno == "Tutti" else int(anno)
-    query = c2.text_input("Cerca (oggetto, fornitore, CIG)", "")
+    query = c2.text_input("Cerca (oggetto, CIG, numero DD)", "")
 
     s = contratti_summary(anno_val)
     if s and s.get("n"):
+        n = int(s["n"])
+        ncap = int(s.get("n_con_capitoli") or 0)
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Contratti", f"{int(s['n']):,}".replace(",", "."))
-        m2.metric("Aggiudicato", fmt_eur(s.get("tot_aggiudicato") or 0))
-        m3.metric("Liquidato", fmt_eur(s.get("tot_liquidato") or 0))
-        m4.metric("Fornitori distinti", f"{int(s.get('n_fornitori') or 0):,}".replace(",", "."))
+        m1.metric("Determinazioni", f"{n:,}".replace(",", "."))
+        m2.metric("Importo (da oggetto)", fmt_eur(s.get("tot_importo") or 0))
+        m3.metric("Con capitoli agganciati", f"{ncap:,} ({100 * ncap // n}%)".replace(",", "."))
+        m4.metric("Capitoli distinti", f"{int(s.get('n_capitoli_distinti') or 0):,}".replace(",", "."))
 
     rows = contratti(anno=anno_val, search=query.strip() or None, limit=500)
-    st.markdown(f"**{len(rows)}** contratti (ordinati per importo di aggiudicazione, max 500)")
+    st.markdown(f"**{len(rows)}** determinazioni (ordinate per importo, max 500)")
     if rows:
         df = pd.DataFrame(rows)
-        df["importo aggiudicazione"] = [fmt_eur(v) for v in df["importo_aggiudicazione"]]
-        df["liquidato"] = [fmt_eur(v) for v in df["importo_liquidato"]]
-        view = df[["anno", "oggetto", "aggiudicatario", "cig", "scelta_contraente",
-                   "importo aggiudicazione", "liquidato", "capitolo_code"]].rename(
-            columns={"scelta_contraente": "procedura", "capitolo_code": "capitolo"})
+        df["importo"] = [fmt_eur(v) for v in df["importo"]]
+        view = df[["anno", "dd_numero", "oggetto", "cig", "importo",
+                   "capitoli", "missioni"]].rename(columns={"dd_numero": "atto"})
         st.dataframe(view, use_container_width=True, hide_index=True, height=460)
         st.download_button(
             "Scarica CSV", pd.DataFrame(rows).to_csv(index=False).encode("utf-8"),
             file_name=f"contratti_torino_{anno}.csv", mime="text/csv")
 
-    forn = contratti_top_fornitori(anno_val, limit=15)
-    if forn:
-        st.subheader("Principali fornitori per importo aggiudicato")
+    miss = contratti_per_missione(anno_val)
+    if miss:
+        st.subheader("Importo impegnato per missione di bilancio")
+        st.caption(
+            "Somma degli impegni di spesa delle determinazioni, per missione "
+            "(dal capitolo indicato nell'atto). Copre le sole determinazioni "
+            "con capitoli agganciati.")
         fig = go.Figure(go.Bar(
-            x=[scale_eur(f["importo"]) for f in forn][::-1],
-            y=[(f["aggiudicatario"] or "?")[:45] for f in forn][::-1],
+            x=[scale_eur(m["importo"]) for m in miss][::-1],
+            y=[f"{m['missione_code']} · {(m['missione'] or '?')[:45]}" for m in miss][::-1],
             orientation="h"))
-        fig.update_layout(height=460, xaxis_title=eur_unit(),
+        fig.update_layout(height=520, xaxis_title=eur_unit(),
                           margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fig, use_container_width=True)
 
