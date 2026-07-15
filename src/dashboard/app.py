@@ -880,8 +880,9 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             "Bilancio D.Lgs 118 analitico per capitoli. I capitoli sommano esattamente "
             "agli aggregati per missione/titolo qui sopra."
             + (" Passando il mouse su un capitolo, il fumetto 🔗 mostra le "
-               "determinazioni-contratto collegate in modo univoco a quel capitolo "
-               "(dalla pagina Appalti e contratti)." if kind == "spesa" else ""))
+               "determinazioni-contratto con impegni su quel capitolo e la quota "
+               "di impegni loro attribuita (dalla pagina Appalti e contratti)."
+               if kind == "spesa" else ""))
         leaf = capitoli(kind=kind, year=year, measure=measure, limit=100000)
         df = pd.DataFrame(leaf)
         if not df.empty:
@@ -906,17 +907,21 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             if (r := glossary.capitolo_note(dn)) else ""
             for dn in df["denominazione"]
         ]
-        # Contract enrichment (spese only): determinazioni univocally linked to the
-        # capitolo (from the pubatti pipeline), shown in the leaf hover.
+        # Contract enrichment (spese only): impegni of the determinazioni-contratto
+        # attributed to this capitolo (per-impegno, so multi-capitolo acts count
+        # each capitolo for its own share), shown in the leaf hover.
         contr = {}
         if kind == "spesa":
             for c in capitoli_contratti(year):
                 esempi = "".join(
                     f"<br>· {_esc(e[:80])}" for e in (c["esempi"] or "").split("||") if e)
+                nn = int(c["n_senza_importo"] or 0)
+                caveat = (f" (+{nn} impegni con importo non leggibile)" if nn else "")
                 contr[c["capitolo_code"]] = (
                     "<br><span style='font-size:11px;color:#0a58ca'>"
-                    f"🔗 {int(c['n_dd'])} determinazioni-contratto {year}: "
-                    f"{fmt_eur(c['importo'] or 0)}{esempi}</span>")
+                    f"🔗 {int(c['n_dd'])} determinazioni-contratto, impegni {year} "
+                    f"su questo capitolo: {fmt_eur(c['importo'] or 0)}"
+                    f"{caveat}{esempi}</span>")
         df["_contr_hover"] = [contr.get(str(cc), "") for cc in df["capitolo_code"]]
         # Full path down to the single capitolo; maxdepth keeps the initial view at
         # the macro-area level and reveals capitoli on click (responsive with ~4k leaves).

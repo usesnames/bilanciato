@@ -535,27 +535,31 @@ class Repository:
         )
 
     def capitoli_contratti(self, *, year: int) -> list[dict[str, Any]]:
-        """Per-capitolo rollup of the contract determinazioni UNIVOCALLY linked to
-        it (DD with exactly one distinct capitolo), for the treemap hover: number
-        of DD, total impegnato in ``year``, and up to two example acts."""
+        """Per-capitolo rollup of contract impegni for the treemap hover. The
+        attribution is per-impegno, so multi-capitolo determinazioni contribute to
+        each capitolo exactly the amount their imputazione assigns to it — no
+        ambiguity. Impegni whose amount was not machine-readable are counted
+        (``n_senza_importo``) but not summed."""
         if not self._has_table("contratti_capitoli"):
             return []
         return self._rows(
-            """WITH uni AS (
+            """WITH imp AS (
                    SELECT c.dd_numero, c.oggetto, cc.capitolo_code,
-                          sum(cc.importo) AS imp
+                          sum(cc.importo) AS imp,
+                          count(*) FILTER (WHERE cc.importo IS NULL) AS n_null
                    FROM contratti c
                    JOIN contratti_capitoli cc ON cc.contratto_id = c.id
-                   WHERE c.n_capitoli = 1 AND cc.anno_imp = ?
+                   WHERE cc.anno_imp = ?
                    GROUP BY ALL
                ), ranked AS (
                    SELECT *, row_number() OVER (PARTITION BY capitolo_code
                                                 ORDER BY imp DESC NULLS LAST) AS rn
-                   FROM uni
+                   FROM imp
                )
                SELECT capitolo_code,
-                      count(*) AS n_dd,
+                      count(DISTINCT dd_numero) AS n_dd,
                       sum(imp) AS importo,
+                      sum(n_null) AS n_senza_importo,
                       string_agg(CASE WHEN rn <= 2 THEN dd_numero || ' — ' ||
                                  substr(oggetto, 1, 70) END, '||' ORDER BY rn) AS esempi
                FROM ranked GROUP BY capitolo_code""",
