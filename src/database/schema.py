@@ -227,26 +227,37 @@ CREATE TABLE IF NOT EXISTS entity_statements (
     source_page   INTEGER NOT NULL
 );
 
--- Public contracts (appalti/affidamenti) from the Comune's L.190/2012 art.1 c.32
--- open dataset (one row per lotto per reference year). The CIG is the join key to
--- ANAC; capitolo_code is the (optional) bridge to the budget, populated from the
--- determinazione dirigenziale where known.
+-- Public contracts/affidamenti reconstructed from the Comune's *determinazioni
+-- dirigenziali* (pubatti.comune.torino.it). One row per DD whose published oggetto
+-- carries a CIG (2023+). The CIG joins ANAC; the impegni of the act -- i.e. the
+-- capitoli di spesa, the bridge to the budget treemap -- live in the child table
+-- ``contratti_capitoli`` (a DD can impegnare several capitoli over several years).
+-- NB: this REPLACES the former L.190/2012 source; affidamenti whose CIG is not in
+-- the published estratto are not captured.
 CREATE TABLE IF NOT EXISTS contratti (
     id                  INTEGER PRIMARY KEY,
-    cig                 VARCHAR,
-    anno                INTEGER NOT NULL,   -- dataset reference year
+    anno                INTEGER NOT NULL,   -- year of the determinazione
+    dd_numero           VARCHAR NOT NULL,   -- e.g. 'DD 712/2025'
+    data_atto           VARCHAR,
+    id_ud               VARCHAR,            -- pubatti idUd (traceability / source PDF)
+    cig                 VARCHAR,            -- CIG(s) found in the oggetto, pipe-joined
+    n_cig               INTEGER,
     oggetto             VARCHAR,
-    struttura           VARCHAR,            -- struttura proponente
-    scelta_contraente   VARCHAR,            -- procedura (es. 23-AFFIDAMENTO DIRETTO)
-    aggiudicatario      VARCHAR,
-    aggiudicatario_cf   VARCHAR,
-    n_partecipanti      INTEGER,
-    importo_aggiudicazione DECIMAL(20, 2),
-    importo_liquidato   DECIMAL(20, 2),     -- somme liquidate nell'anno
-    data_inizio         VARCHAR,
-    data_ultimazione    VARCHAR,
-    capitolo_code       VARCHAR,            -- bridge to rendiconto_capitoli (via DD)
-    source_document     VARCHAR NOT NULL
+    importo             DECIMAL(20, 2),     -- importo letto dall'oggetto (valore massimo)
+    n_capitoli          INTEGER,            -- numero di capitoli impegnati (vedi contratti_capitoli)
+    source_document     VARCHAR NOT NULL    -- 'pubatti'
+);
+
+-- Impegni di spesa (capitoli) di ciascuna determinazione: una riga per
+-- (contratto x capitolo x anno di imputazione). ``capitolo_code`` è il codice a 12
+-- cifre che joina ``rendiconto_capitoli`` (e quindi missione/programma/macro).
+CREATE TABLE IF NOT EXISTS contratti_capitoli (
+    id                  INTEGER PRIMARY KEY,
+    contratto_id        INTEGER NOT NULL REFERENCES contratti(id),
+    capitolo_code       VARCHAR NOT NULL,   -- join a rendiconto_capitoli.capitolo_code
+    anno_imp            INTEGER,
+    importo             DECIMAL(20, 2),
+    match_kind          VARCHAR             -- exact | base9-unique | base9-multi
 );
 
 -- The entity-name crosswalk: every raw name seen in any source mapped to its
