@@ -102,7 +102,7 @@ def main(argv: list[str]) -> int:
             distinct_caps = {c["capitolo"] for c in caps}
             contratti_rows.append((
                 cid, _int(r["anno"]), r["dd_numero"], _iso_date(r["data_atto"]), ud,
-                r["cig"], _int(r["n_cig"]), r["oggetto"],
+                r["idPubblicazione"], r["cig"], _int(r["n_cig"]), r["oggetto"],
                 _dec_plain(r.get("importo_oggetto")), len(distinct_caps), "pubatti",
             ))
             for c in caps:
@@ -114,9 +114,9 @@ def main(argv: list[str]) -> int:
 
     con.executemany(
         """INSERT INTO contratti
-           (id, anno, dd_numero, data_atto, id_ud, cig, n_cig, oggetto,
-            importo, n_capitoli, source_document)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+           (id, anno, dd_numero, data_atto, id_ud, id_pubblicazione, cig, n_cig,
+            oggetto, importo, n_capitoli, source_document)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         contratti_rows,
     )
     con.executemany(
@@ -126,7 +126,7 @@ def main(argv: list[str]) -> int:
         capitoli_rows,
     )
 
-    n_with_cap = sum(1 for row in contratti_rows if row[9] > 0)
+    n_with_cap = sum(1 for row in contratti_rows if row[10] > 0)
     by_year: dict[int, int] = {}
     for row in contratti_rows:
         by_year[row[1]] = by_year.get(row[1], 0) + 1

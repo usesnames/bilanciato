@@ -240,6 +240,8 @@ CREATE TABLE IF NOT EXISTS contratti (
     dd_numero           VARCHAR NOT NULL,   -- e.g. 'DD 712/2025'
     data_atto           VARCHAR,
     id_ud               VARCHAR,            -- pubatti idUd (traceability / source PDF)
+    id_pubblicazione    VARCHAR,            -- with id_ud, forms the public atto URL:
+                                            -- pubatti…/attistorico/atto/<idUd>/<idPubblicazione>
     cig                 VARCHAR,            -- CIG(s) found in the oggetto, pipe-joined
     n_cig               INTEGER,
     oggetto             VARCHAR,

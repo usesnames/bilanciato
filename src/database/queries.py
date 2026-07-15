@@ -566,6 +566,26 @@ class Repository:
             [year],
         )
 
+    def capitoli_contratti_dettaglio(self, *, year: int) -> list[dict[str, Any]]:
+        """One row per (capitolo, determinazione): the machine-readable impegni
+        the act attributes to that capitolo in ``year``. Feeds the contract tiles
+        nested under each capitolo in the treemap."""
+        if not self._has_table("contratti_capitoli"):
+            return []
+        return self._rows(
+            """SELECT cc.capitolo_code, c.dd_numero,
+                      any_value(substr(c.oggetto, 1, 80)) AS oggetto,
+                      any_value(c.id_ud) AS id_ud,
+                      any_value(c.id_pubblicazione) AS id_pubblicazione,
+                      sum(cc.importo) AS importo
+               FROM contratti c
+               JOIN contratti_capitoli cc ON cc.contratto_id = c.id
+               WHERE cc.anno_imp = ? AND cc.importo IS NOT NULL
+               GROUP BY cc.capitolo_code, c.dd_numero
+               HAVING sum(cc.importo) > 0""",
+            [year],
+        )
+
     def capitoli_liv1(self, *, kind: str, year: int) -> list[dict[str, Any]]:
         """Distinct top-level voci (missione/titolo) for the drill-down selector."""
         return self._rows(

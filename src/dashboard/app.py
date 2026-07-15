@@ -260,6 +260,11 @@ def capitoli_contratti(year):
     return get_repo().capitoli_contratti(year=year)
 
 
+@st.cache_data(ttl=300)
+def capitoli_contratti_dettaglio(year):
+    return get_repo().capitoli_contratti_dettaglio(year=year)
+
+
 # Human labels for rendiconto measures.
 RENDICONTO_MEASURES = {
     "spesa": {
@@ -879,10 +884,11 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             f"capitolo di bilancio (misura: {measure_label.lower()}). Fonte: Conto di "
             "Bilancio D.Lgs 118 analitico per capitoli. I capitoli sommano esattamente "
             "agli aggregati per missione/titolo qui sopra."
-            + (" Passando il mouse su un capitolo, il fumetto 🔗 mostra le "
-               "determinazioni-contratto con impegni su quel capitolo e la quota "
-               "di impegni loro attribuita (dalla pagina Appalti e contratti)."
-               if kind == "spesa" else ""))
+            + (" Dentro ogni capitolo, le tessere 🔗 sono le determinazioni-contratto "
+               "con impegni su quel capitolo, proporzionali alla quota loro attribuita; "
+               "il resto del capitolo è la tessera residua. Dove gli impegni dei "
+               "contratti eccedono il valore del capitolo (pluriennali, atti "
+               "sovrapposti) il dettaglio resta solo nel fumetto." if kind == "spesa" else ""))
         leaf = capitoli(kind=kind, year=year, measure=measure, limit=100000)
         df = pd.DataFrame(leaf)
         if not df.empty:
@@ -923,19 +929,72 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
                     f"su questo capitolo: {fmt_eur(c['importo'] or 0)}"
                     f"{caveat}{esempi}</span>")
         df["_contr_hover"] = [contr.get(str(cc), "") for cc in df["capitolo_code"]]
-        # Full path down to the single capitolo; maxdepth keeps the initial view at
-        # the macro-area level and reveals capitoli on click (responsive with ~4k leaves).
+        # Contract tiles: nest each determinazione under its capitolo as a child
+        # whose area is the impegno the act attributes to THAT capitolo, plus a
+        # residual tile so the capitolo keeps its exact budget value. Capitoli whose
+        # contract impegni exceed the budget value (pluriennali, doppi atti) get no
+        # children and keep the hover-only summary.
+        df["Contratto"] = None
+        if kind == "spesa":
+            by_cap = {}
+            for d in capitoli_contratti_dettaglio(year):
+                by_cap.setdefault(str(d["capitolo_code"]), []).append(d)
+            extra, replaced = [], []
+            for i, row in df.iterrows():
+                dds = by_cap.get(str(row["capitolo_code"]))
+                if not dds:
+                    continue
+                vals = [float(scale_eur(d["importo"])) for d in dds]
+                resid = row["val"] - sum(vals)
+                if resid < -row["val"] * 0.001:
+                    continue
+                for d, v in zip(dds, vals):
+                    r = row.copy()
+                    # the tile label is a link to the act's public page on pubatti
+                    # (from which the DD PDF opens); plotly renders <a> in labels.
+                    url = ("https://pubatti.comune.torino.it/coto/attistorico/atto/"
+                           f"{d['id_ud']}/{d['id_pubblicazione']}")
+                    r["Contratto"] = (f'<a href="{url}" target="_blank">🔗 '
+                                      f'{d["dd_numero"]} · {_esc(d["oggetto"])}</a>')
+                    r["val"] = v
+                    r["_note_hover"] = ""
+                    r["_contr_hover"] = (
+                        "<br><span style='font-size:11px;color:#0a58ca'>impegno della "
+                        "determinazione-contratto attribuito a questo capitolo — "
+                        "clic sul testo della tessera per aprire l'atto</span>")
+                    extra.append(r)
+                if resid > row["val"] * 0.001:
+                    r = row.copy()
+                    r["Contratto"] = "resto del capitolo (non da contratti censiti)"
+                    r["val"] = max(resid, 0.0)
+                    r["_note_hover"] = ""
+                    r["_contr_hover"] = ""
+                    extra.append(r)
+                replaced.append(i)
+            if extra:
+                df = pd.concat([df.drop(index=replaced), pd.DataFrame(extra)],
+                               ignore_index=True)
+        # Full path down to the single capitolo (and its contract tiles); maxdepth
+        # keeps the initial view at the macro-area level, deeper levels on click.
         fig = px.treemap(
-            df, path=[px.Constant(root), lab1, lab2, lab3, "Capitolo"], values="val",
-            color=lab1, color_discrete_sequence=_PALETTE, maxdepth=4,
+            df, path=[px.Constant(root), lab1, lab2, lab3, "Capitolo", "Contratto"],
+            values="val", color=lab1, color_discrete_sequence=_PALETTE, maxdepth=4,
             custom_data=["_note_hover", "_contr_hover"])
         # Intermediate nodes (missione/programma/macroaggregato) are created by plotly
         # from the path and get no customdata; replace their NaN with "" so the
-        # %{customdata[0]} token in the hovertemplate renders as nothing.
+        # %{customdata[0]} token in the hovertemplate renders as nothing. Capitoli
+        # that BECAME branch nodes (they host contract tiles) get their 🔗 summary
+        # re-attached by matching the leading capitolo code in the node label.
         tr = fig.data[0]
         if tr.customdata is not None:
-            tr.customdata = [[c if isinstance(c, str) else "" for c in row]
-                             for row in tr.customdata]
+            cd = [[c if isinstance(c, str) else "" for c in row]
+                  for row in tr.customdata]
+            if kind == "spesa" and contr:
+                for i, lab in enumerate(tr.labels):
+                    m = re.match(r"^(\d{6,12}) · ", str(lab))
+                    if m and not cd[i][1]:
+                        cd[i][1] = contr.get(m.group(1), "")
+            tr.customdata = cd
         fig.update_traces(
             root_color="lightgrey",
             textfont_size=17,
