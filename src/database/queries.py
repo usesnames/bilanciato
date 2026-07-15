@@ -534,55 +534,73 @@ class Repository:
             [kind, year, measure],
         )
 
+    # Deduplicated contract impegni for one year: when several DD declare the SAME
+    # impegno (identical capitolo + esercizio + importo: prenotazione poi
+    # aggiudicazione, atti collegati), only the most recent act is kept.
+    _IMPEGNI_DEDUP = """
+        SELECT * FROM (
+            SELECT cc.capitolo_code, cc.anno_imp, cc.importo, c.dd_numero,
+                   c.oggetto, c.id_ud, c.id_pubblicazione,
+                   row_number() OVER (
+                       PARTITION BY cc.capitolo_code, cc.anno_imp, cc.importo
+                       ORDER BY c.data_atto DESC, c.id DESC) AS dup_rn
+            FROM contratti c
+            JOIN contratti_capitoli cc ON cc.contratto_id = c.id
+            WHERE cc.anno_imp = ? AND cc.importo IS NOT NULL
+        ) WHERE dup_rn = 1"""
+
     def capitoli_contratti(self, *, year: int) -> list[dict[str, Any]]:
         """Per-capitolo rollup of contract impegni for the treemap hover. The
         attribution is per-impegno, so multi-capitolo determinazioni contribute to
         each capitolo exactly the amount their imputazione assigns to it — no
-        ambiguity. Impegni whose amount was not machine-readable are counted
-        (``n_senza_importo``) but not summed."""
+        ambiguity. Same-impegno duplicates across acts are removed (see
+        ``_IMPEGNI_DEDUP``); impegni whose amount was not machine-readable are
+        counted (``n_senza_importo``) but not summed."""
         if not self._has_table("contratti_capitoli"):
             return []
         return self._rows(
-            """WITH imp AS (
-                   SELECT c.dd_numero, c.oggetto, cc.capitolo_code,
-                          sum(cc.importo) AS imp,
-                          count(*) FILTER (WHERE cc.importo IS NULL) AS n_null
-                   FROM contratti c
-                   JOIN contratti_capitoli cc ON cc.contratto_id = c.id
-                   WHERE cc.anno_imp = ?
-                   GROUP BY ALL
+            f"""WITH imp AS ({self._IMPEGNI_DEDUP}
+                ), per_dd AS (
+                   SELECT dd_numero, oggetto, capitolo_code, sum(importo) AS imp
+                   FROM imp GROUP BY ALL
+               ), nulls AS (
+                   SELECT cc.capitolo_code, count(*) AS n_null
+                   FROM contratti_capitoli cc
+                   WHERE cc.anno_imp = ? AND cc.importo IS NULL
+                   GROUP BY 1
                ), ranked AS (
                    SELECT *, row_number() OVER (PARTITION BY capitolo_code
                                                 ORDER BY imp DESC NULLS LAST) AS rn
-                   FROM imp
+                   FROM per_dd
                )
-               SELECT capitolo_code,
-                      count(DISTINCT dd_numero) AS n_dd,
-                      sum(imp) AS importo,
-                      sum(n_null) AS n_senza_importo,
-                      string_agg(CASE WHEN rn <= 2 THEN dd_numero || ' — ' ||
-                                 substr(oggetto, 1, 70) END, '||' ORDER BY rn) AS esempi
-               FROM ranked GROUP BY capitolo_code""",
-            [year],
+               SELECT r.capitolo_code,
+                      count(DISTINCT r.dd_numero) AS n_dd,
+                      sum(r.imp) AS importo,
+                      any_value(n.n_null) AS n_senza_importo,
+                      string_agg(CASE WHEN r.rn <= 2 THEN r.dd_numero || ' — ' ||
+                                 substr(r.oggetto, 1, 70) END, '||' ORDER BY r.rn) AS esempi
+               FROM ranked r LEFT JOIN nulls n USING (capitolo_code)
+               GROUP BY r.capitolo_code""",
+            [year, year],
         )
 
     def capitoli_contratti_dettaglio(self, *, year: int) -> list[dict[str, Any]]:
         """One row per (capitolo, determinazione): the machine-readable impegni
-        the act attributes to that capitolo in ``year``. Feeds the contract tiles
-        nested under each capitolo in the treemap."""
+        the act attributes to that capitolo in ``year``, same-impegno duplicates
+        across acts removed. Feeds the contract tiles nested under each capitolo
+        in the treemap."""
         if not self._has_table("contratti_capitoli"):
             return []
         return self._rows(
-            """SELECT cc.capitolo_code, c.dd_numero,
-                      any_value(substr(c.oggetto, 1, 80)) AS oggetto,
-                      any_value(c.id_ud) AS id_ud,
-                      any_value(c.id_pubblicazione) AS id_pubblicazione,
-                      sum(cc.importo) AS importo
-               FROM contratti c
-               JOIN contratti_capitoli cc ON cc.contratto_id = c.id
-               WHERE cc.anno_imp = ? AND cc.importo IS NOT NULL
-               GROUP BY cc.capitolo_code, c.dd_numero
-               HAVING sum(cc.importo) > 0""",
+            f"""WITH imp AS ({self._IMPEGNI_DEDUP})
+                SELECT capitolo_code, dd_numero,
+                       any_value(substr(oggetto, 1, 80)) AS oggetto,
+                       any_value(id_ud) AS id_ud,
+                       any_value(id_pubblicazione) AS id_pubblicazione,
+                       sum(importo) AS importo
+                FROM imp
+                GROUP BY capitolo_code, dd_numero
+                HAVING sum(importo) > 0""",
             [year],
         )
 

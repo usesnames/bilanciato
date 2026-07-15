@@ -884,11 +884,13 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
             f"capitolo di bilancio (misura: {measure_label.lower()}). Fonte: Conto di "
             "Bilancio D.Lgs 118 analitico per capitoli. I capitoli sommano esattamente "
             "agli aggregati per missione/titolo qui sopra."
-            + (" Dentro ogni capitolo, le tessere 🔗 sono le determinazioni-contratto "
-               "con impegni su quel capitolo, proporzionali alla quota loro attribuita; "
-               "il resto del capitolo è la tessera residua. Dove gli impegni dei "
-               "contratti eccedono il valore del capitolo (pluriennali, atti "
-               "sovrapposti) il dettaglio resta solo nel fumetto." if kind == "spesa" else ""))
+            + (" Con la misura *impegni*, dentro ogni capitolo le tessere 🔗 sono le "
+               "determinazioni-contratto con impegni imputati a quel capitolo ed "
+               "esercizio, proporzionali alla quota loro attribuita (atti che "
+               "dichiarano lo stesso impegno sono contati una volta sola); il resto "
+               "del capitolo è la tessera residua. Dove gli impegni dei contratti "
+               "eccedono comunque il valore ufficiale, il dettaglio resta solo nel "
+               "fumetto." if kind == "spesa" else ""))
         leaf = capitoli(kind=kind, year=year, measure=measure, limit=100000)
         df = pd.DataFrame(leaf)
         if not df.empty:
@@ -931,11 +933,13 @@ def _render_capitoli_detail(kind: str, measure: str, measure_label: str):
         df["_contr_hover"] = [contr.get(str(cc), "") for cc in df["capitolo_code"]]
         # Contract tiles: nest each determinazione under its capitolo as a child
         # whose area is the impegno the act attributes to THAT capitolo, plus a
-        # residual tile so the capitolo keeps its exact budget value. Capitoli whose
-        # contract impegni exceed the budget value (pluriennali, doppi atti) get no
-        # children and keep the hover-only summary.
+        # residual tile so the capitolo keeps its exact budget value. Only when the
+        # displayed measure IS impegni (tiles are impegni: nesting them under a
+        # previsioni- or cassa-sized capitolo would mix semantics). Capitoli whose
+        # contract impegni exceed the official value get no children and keep the
+        # hover-only summary.
         df["Contratto"] = None
-        if kind == "spesa":
+        if kind == "spesa" and measure == "impegni":
             by_cap = {}
             for d in capitoli_contratti_dettaglio(year):
                 by_cap.setdefault(str(d["capitolo_code"]), []).append(d)
