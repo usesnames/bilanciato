@@ -52,6 +52,15 @@ Reads DuckDB directly (no API). Sections: Panoramica, Prospetti di bilancio,
 Confronto tra anni, Esplora le partecipate, Ricerca, Dati aperti / per LLM. Every
 table shows the source PDF page.
 
+The deployed copy runs on Streamlit Community Cloud, whose free tier hibernates an
+app after a stretch without traffic ("This app has gone to sleep due to
+inactivity"). `.github/workflows/keepalive.yml` visits it with headless Chromium
+every six hours, and wakes it if it already dozed off. It needs the app URL once:
+
+```bash
+gh variable set APP_URL --body https://<app>.streamlit.app
+```
+
 ## 3. Publish the LLM-readable data site
 
 ```bash
